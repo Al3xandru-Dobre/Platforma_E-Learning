@@ -1,0 +1,692 @@
+/* ═══════════════════════════════════════════════════════════════
+   app.css — complete redesign pass
+
+   ROOT PROBLEM FIXED:
+   JavaFX Button has a built-in "modena.css" default stylesheet that
+   sets -fx-text-fill on .button to a near-black value regardless of
+   what our CSS says. The only reliable fixes are:
+     (a) Give the sidebar a dark background so white text reads clearly
+     (b) Add -fx-text-fill explicitly on .sidebar-btn AND .sidebar-btn:hover
+   We do both. Dark sidebar = guaranteed contrast no matter what JavaFX
+   does with its own defaults.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Root ───────────────────────────────────────────────────── */
+.root {
+    -fx-font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    -fx-font-size: 14px;
+    -fx-background-color: #1a1830;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LOGIN
+   ══════════════════════════════════════════════════════════════ */
+.login-root {
+    -fx-background-color: #13112a;
+}
+
+.brand-panel {
+    -fx-background-color: #13112a;
+    -fx-min-width: 320px;
+    -fx-pref-width: 320px;
+}
+.brand-logo  { -fx-font-size: 56px; }
+.brand-title {
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f0eefc;
+    -fx-text-alignment: center;
+}
+.brand-sub { -fx-font-size: 13px; -fx-text-fill: #7f77dd; }
+
+.form-panel { -fx-background-color: #1e1c3a; }
+
+.tab-btn {
+    -fx-background-color: transparent;
+    -fx-border-color: #3a3860;
+    -fx-border-width: 0 0 2 0;
+    -fx-padding: 10 24;
+    -fx-cursor: hand;
+    -fx-font-size: 14px;
+    -fx-text-fill: #7f77dd;
+}
+.tab-active {
+    -fx-border-color: #8b82e8;
+    -fx-text-fill: #c8c3f8;
+    -fx-font-weight: bold;
+}
+
+.auth-form   { -fx-padding: 28 0 0 0; -fx-max-width: 360px; }
+.form-heading { -fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: #f0eefc; }
+
+.field {
+    -fx-background-color: #13112a;
+    -fx-background-radius: 8;
+    -fx-border-color: #3a3860;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+    -fx-padding: 10 14;
+    -fx-font-size: 14px;
+    -fx-text-fill: #e8e6f8;
+    -fx-prompt-text-fill: #5a5880;
+}
+.field:focused {
+    -fx-border-color: #8b82e8;
+    -fx-background-color: #1a1830;
+}
+
+.field-label  { -fx-text-fill: #9e9ab8; -fx-font-size: 13px; }
+.error-label  { -fx-text-fill: #f09595; -fx-font-size: 13px; -fx-wrap-text: true; }
+
+/* ══════════════════════════════════════════════════════════════
+   BUTTONS
+   ══════════════════════════════════════════════════════════════ */
+.primary-btn {
+    -fx-background-color: #534AB7;
+    -fx-text-fill: white;
+    -fx-background-radius: 8;
+    -fx-padding: 10 20;
+    -fx-font-size: 14px;
+    -fx-cursor: hand;
+    -fx-font-weight: bold;
+}
+.primary-btn:hover { -fx-background-color: #6c63d4; }
+
+.ghost-btn {
+    -fx-background-color: transparent;
+    -fx-text-fill: #c8c3f8;
+    -fx-border-color: #534AB7;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 6 14;
+    -fx-cursor: hand;
+}
+.ghost-btn:hover { -fx-background-color: #2a2650; }
+
+.danger-btn {
+    -fx-background-color: #7a2020;
+    -fx-text-fill: #fdd;
+    -fx-background-radius: 8;
+    -fx-padding: 10 20;
+    -fx-font-size: 14px;
+    -fx-cursor: hand;
+}
+.danger-btn:hover { -fx-background-color: #a32d2d; }
+
+.secondary-btn {
+    -fx-background-color: #2a2650;
+    -fx-text-fill: #c8c3f8;
+    -fx-background-radius: 8;
+    -fx-padding: 8 16;
+    -fx-font-size: 13px;
+    -fx-cursor: hand;
+}
+.secondary-btn:hover { -fx-background-color: #38347a; }
+
+/* ══════════════════════════════════════════════════════════════
+   DASHBOARD SHELL  (BaseDashboardController)
+   ══════════════════════════════════════════════════════════════ */
+.dashboard-shell { -fx-background-color: #13112a; }
+
+/* ── Nav bar ─────────────────────────────────────────────────── */
+.nav-bar {
+    -fx-background-color: #1e1c3a;
+    -fx-border-color: #2e2c52;
+    -fx-border-width: 0 0 1 0;
+    -fx-pref-height: 56px;
+    -fx-min-height: 56px;
+    -fx-spacing: 12;
+}
+.nav-title { -fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #f0eefc; }
+.nav-user  { -fx-font-size: 13px; -fx-text-fill: #7f77dd; }
+
+/* ── Sidebar  (DARK — this is what fixes the visibility bug) ─── */
+.sidebar {
+    -fx-background-color: #13112a;
+    -fx-border-color: #2e2c52;
+    -fx-border-width: 0 1 0 0;
+    -fx-pref-width: 220px;
+    -fx-min-width: 180px;
+}
+
+.sidebar-section {
+    -fx-font-size: 10px;
+    -fx-text-fill: #4a4870;
+    -fx-font-weight: bold;
+    -fx-padding: 0 20 8 20;
+}
+
+/*
+ * WHY the explicit -fx-text-fill on both states?
+ * JavaFX's default modena.css defines .button { -fx-text-fill: -fx-text-base-color }
+ * which resolves to near-black. Because modena.css has higher specificity in
+ * the JavaFX cascade, our class override gets ignored unless we explicitly
+ * re-declare -fx-text-fill. Putting it on both the idle and :hover states
+ * ensures the text stays white regardless of what the default stylesheet does.
+ */
+.sidebar-btn {
+    -fx-background-color: transparent;
+    -fx-text-fill: #c8c3f8;
+    -fx-alignment: CENTER_LEFT;
+    -fx-padding: 11 20;
+    -fx-font-size: 14px;
+    -fx-cursor: hand;
+    -fx-background-radius: 0;
+    -fx-border-width: 0;
+}
+.sidebar-btn:hover {
+    -fx-background-color: #2a2650;
+    -fx-text-fill: #f0eefc;
+}
+.sidebar-btn-active {
+    -fx-background-color: #38347a;
+    -fx-text-fill: #f0eefc;
+    -fx-font-weight: bold;
+}
+
+/* ── Content area ────────────────────────────────────────────── */
+.content-area { -fx-background-color: #1a1830; }
+
+.content-heading { -fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: #f0eefc; }
+.content-sub     { -fx-font-size: 14px; -fx-text-fill: #9e9ab8; }
+
+/* ── Stat cards (used in all three dashboards) ───────────────── */
+.stat-card {
+    -fx-background-color: #1e1c3a;
+    -fx-background-radius: 12;
+    -fx-border-color: #2e2c52;
+    -fx-border-radius: 12;
+    -fx-border-width: 1;
+    -fx-padding: 20;
+}
+.stat-number { -fx-font-size: 32px; -fx-font-weight: bold; -fx-text-fill: #c8c3f8; }
+.stat-label  { -fx-font-size: 12px; -fx-text-fill: #7f77dd; }
+
+/* ── Quick-action cards ──────────────────────────────────────── */
+.quick-card {
+    -fx-background-color: #1e1c3a;
+    -fx-background-radius: 12;
+    -fx-border-color: #2e2c52;
+    -fx-border-radius: 12;
+    -fx-border-width: 1;
+    -fx-padding: 20;
+}
+.card-icon  { -fx-font-size: 28px; }
+.card-title { -fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #e8e6f8; }
+.card-desc  { -fx-font-size: 12px; -fx-text-fill: #7f77dd; -fx-wrap-text: true; }
+
+.card-btn {
+    -fx-background-color: #2a2650;
+    -fx-text-fill: #c8c3f8;
+    -fx-background-radius: 8;
+    -fx-padding: 6 14;
+    -fx-cursor: hand;
+}
+.card-btn:hover { -fx-background-color: #38347a; -fx-text-fill: #f0eefc; }
+
+/* ── Table (used in admin user list, student course list) ─────── */
+.data-table { -fx-background-color: #1e1c3a; -fx-border-color: #2e2c52; }
+.data-table .column-header {
+    -fx-background-color: #13112a;
+    -fx-border-color: #2e2c52;
+    -fx-border-width: 0 0 1 0;
+}
+.data-table .column-header .label {
+    -fx-text-fill: #7f77dd;
+    -fx-font-weight: bold;
+    -fx-font-size: 12px;
+}
+.data-table .table-row-cell {
+    -fx-background-color: #1e1c3a;
+    -fx-border-color: transparent transparent #2e2c52 transparent;
+    -fx-border-width: 0 0 1 0;
+    -fx-text-fill: #c8c3f8;
+}
+.data-table .table-row-cell:odd  { -fx-background-color: #1a1830; }
+.data-table .table-row-cell:selected { -fx-background-color: #38347a; }
+.data-table .table-cell { -fx-text-fill: #c8c3f8; -fx-font-size: 13px; -fx-padding: 8 12; }
+
+/* ── Section divider label ──────────────────────────────────── */
+.section-label {
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #4a4870;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   WHITEBOARD SCREEN
+   ══════════════════════════════════════════════════════════════ */
+.board-header {
+    -fx-background-color: #1e1c3a;
+    -fx-border-color: #2e2c52;
+    -fx-border-width: 0 0 1 0;
+}
+
+.board-list {
+    -fx-background-color: #1e1c3a;
+    -fx-background-radius: 8;
+    -fx-border-color: #2e2c52;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+}
+.board-list .list-cell {
+    -fx-padding: 10 14;
+    -fx-font-size: 13px;
+    -fx-text-fill: #c8c3f8;
+    -fx-background-color: transparent;
+    -fx-border-color: transparent transparent #2e2c52 transparent;
+    -fx-border-width: 0 0 1 0;
+}
+.board-list .list-cell:selected { -fx-background-color: #38347a; }
+.board-list .list-cell:empty    { -fx-background-color: transparent; -fx-border-color: transparent; }
+
+.board-input-panel {
+    -fx-background-color: #1e1c3a;
+    -fx-border-color: #2e2c52;
+    -fx-border-width: 0 0 0 1;
+}
+
+.board-textarea {
+    -fx-background-color: #13112a;
+    -fx-background-radius: 8;
+    -fx-border-color: #3a3860;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+    -fx-padding: 10 12;
+    -fx-font-size: 14px;
+    -fx-text-fill: #e8e6f8;
+    -fx-prompt-text-fill: #4a4870;
+}
+.board-textarea:focused { -fx-border-color: #8b82e8; -fx-background-color: #1a1830; }
+
+.board-feedback     { -fx-font-size: 13px; -fx-wrap-text: true; }
+.board-feedback-ok  { -fx-text-fill: #9ed67a; }
+.board-feedback-err { -fx-text-fill: #f09595; }
+
+/* ── Role badge chips (admin user table) ─────────────────────── */
+.role-teacher { -fx-background-color: #2a2650; -fx-text-fill: #c8c3f8;
+    -fx-background-radius: 6; -fx-padding: 2 8; -fx-font-size: 11px; }
+.role-student { -fx-background-color: #0f3a2a; -fx-text-fill: #9fd6b0;
+    -fx-background-radius: 6; -fx-padding: 2 8; -fx-font-size: 11px; }
+.role-admin   { -fx-background-color: #3a1818; -fx-text-fill: #f09595;
+    -fx-background-radius: 6; -fx-padding: 2 8; -fx-font-size: 11px; }
+
+/* ── Login extra labels ───────────────────────────────────────────────────── */
+.brand-hint {
+    -fx-font-size: 11px;
+    -fx-text-fill: #4a4870;
+    -fx-text-alignment: center;
+    -fx-padding: 12 0 0 0;
+    -fx-line-spacing: 3;
+}
+
+.form-sub {
+    -fx-font-size: 13px;
+    -fx-text-fill: #7f77dd;
+    -fx-padding: 0 0 8 0;
+}
+
+.radio-opt {
+    -fx-text-fill: #c8c3f8;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   COURSE PANEL  (TeacherDashboardController)
+   ══════════════════════════════════════════════════════════════ */
+
+.create-form {
+    -fx-background-color: #1e1c3a;
+    -fx-border-color: #534AB7;
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-border-width: 1;
+}
+
+.course-row {
+    -fx-background-color: #1e1c3a;
+    -fx-background-radius: 10;
+    -fx-border-color: #2e2c52;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+}
+
+.course-row:hover {
+    -fx-border-color: #534AB7;
+    -fx-background-color: #252350;
+}
+
+.course-row-title {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f0eefc;
+}
+
+.course-row-date {
+    -fx-font-size: 11px;
+    -fx-text-fill: #4a4870;
+}
+
+.subject-chip {
+    -fx-background-color: #2a2650;
+    -fx-text-fill: #8b82e8;
+    -fx-background-radius: 6;
+    -fx-padding: 4 10;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-min-width: 90;
+}
+
+.sort-combo {
+    -fx-background-color: #1e1c3a;
+    -fx-border-color: #3a3860;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-text-fill: #c8c3f8;
+    -fx-font-size: 13px;
+}
+
+.sort-combo .list-cell {
+    -fx-background-color: #1e1c3a;
+    -fx-text-fill: #c8c3f8;
+}
+
+/* ── Login extras ──────────────────────────────────────────── */
+.form-sub {
+    -fx-font-size: 13px;
+    -fx-text-fill: #7f77dd;
+    -fx-padding: 0 0 8 0;
+}
+
+.radio-opt {
+    -fx-text-fill: #c8c3f8;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PROFILE PANEL  (ProfileController)
+   ══════════════════════════════════════════════════════════════ */
+
+.profile-scroll {
+    -fx-background-color: #1a1830;
+    -fx-border-color: transparent;
+    -fx-background: #1a1830;
+}
+
+.profile-avatar-wrap {
+    -fx-background-color: #534AB7;
+    -fx-background-radius: 50%;
+    -fx-border-radius: 50%;
+}
+
+.profile-avatar {
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.profile-info-row {
+    -fx-background-color: #1e1c3a;
+    -fx-background-radius: 10;
+    -fx-border-color: #2e2c52;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-padding: 14 18;
+}
+
+.profile-info-label {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #7f77dd;
+}
+
+.profile-info-value {
+    -fx-font-size: 14px;
+    -fx-text-fill: #f0eefc;
+}
+
+.profile-section-title {
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f0eefc;
+    -fx-padding: 0 0 4 0;
+}
+
+.profile-separator {
+    -fx-background-color: #2e2c52;
+    -fx-border-color: #2e2c52;
+}
+
+.profile-feedback-ok  { -fx-text-fill: #9ed67a; -fx-font-size: 13px; }
+.profile-feedback-err { -fx-text-fill: #f09595; -fx-font-size: 13px; }
+
+/* ── Logout button (slightly different from ghost-btn — red tint) ── */
+.logout-btn {
+    -fx-background-color: transparent;
+    -fx-text-fill: #f09595;
+    -fx-border-color: #7a2020;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 6 14;
+    -fx-cursor: hand;
+}
+.logout-btn:hover {
+    -fx-background-color: #3a1010;
+    -fx-text-fill: #fdd;
+}
+
+/* ── Profile button (matches ghost-btn but purple) ──────────────── */
+.profile-btn {
+    -fx-background-color: transparent;
+    -fx-text-fill: #c8c3f8;
+    -fx-border-color: #534AB7;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 6 14;
+    -fx-cursor: hand;
+}
+.profile-btn:hover { -fx-background-color: #2a2650; }
+
+/* ── Role badge colours ──────────────────────────────────────────── */
+.role-teacher       { -fx-background-color: #2a2650; -fx-text-fill: #c8c3f8;
+    -fx-background-radius: 6; -fx-padding: 4 12;
+    -fx-font-size: 12px; -fx-font-weight: bold; }
+.role-student       { -fx-background-color: #0f3a2a; -fx-text-fill: #9fd6b0;
+    -fx-background-radius: 6; -fx-padding: 4 12;
+    -fx-font-size: 12px; -fx-font-weight: bold; }
+.role-administrator { -fx-background-color: #3a1818; -fx-text-fill: #f09595;
+    -fx-background-radius: 6; -fx-padding: 4 12;
+    -fx-font-size: 12px; -fx-font-weight: bold; }
+/* ══════════════════════════════════════════════════════════════
+   ADMINISTRATOR HIGHLIGHT
+   Gold accent on nav bar + badge — visually distinct from
+   Teacher/Student without repainting the whole app.
+   ══════════════════════════════════════════════════════════════ */
+
+.nav-bar-admin {
+    -fx-border-color: #b8860b;
+    -fx-border-width: 0 0 3 0;
+    -fx-background-color: #1a1830;
+}
+
+.admin-nav-badge {
+    -fx-background-color: #3d2e00;
+    -fx-text-fill: #f5c842;
+    -fx-background-radius: 6;
+    -fx-padding: 4 12;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-border-color: #b8860b;
+    -fx-border-radius: 6;
+    -fx-border-width: 1;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   COURSE ROOM
+   ══════════════════════════════════════════════════════════════ */
+
+.room-header {
+    -fx-background-color: #1e1c3a;
+    -fx-border-color: #2e2c52;
+    -fx-border-width: 0 0 1 0;
+}
+
+/* Tab bar — the Lessons / Assignments switcher */
+.room-tab-bar {
+    -fx-background-color: #13112a;
+    -fx-border-color: #2e2c52;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 8 0 0 0;
+}
+
+.room-tab-btn {
+    -fx-background-color: transparent;
+    -fx-text-fill: #7f77dd;
+    -fx-border-color: transparent;
+    -fx-border-width: 0 0 3 0;
+    -fx-padding: 10 24;
+    -fx-font-size: 14px;
+    -fx-cursor: hand;
+    -fx-background-radius: 0;
+}
+
+.room-tab-btn:hover {
+    -fx-text-fill: #c8c3f8;
+    -fx-background-color: #1e1c3a;
+}
+
+.room-tab-active {
+    -fx-text-fill: #f0eefc;
+    -fx-border-color: #8b82e8;
+    -fx-font-weight: bold;
+}
+
+/* Split pane used in the Lessons view */
+.room-split {
+    -fx-background-color: #1a1830;
+    -fx-box-border: transparent;
+    -fx-padding: 0;
+}
+
+.room-split > .split-pane-divider {
+    -fx-background-color: #2e2c52;
+    -fx-padding: 0 1;
+}
+
+/* Left panel lesson list */
+.room-lesson-list {
+    -fx-background-color: #13112a;
+    -fx-border-color: transparent;
+}
+
+/* Generic scroll pane used in the room — no white background */
+.room-scroll {
+    -fx-background-color: transparent;
+    -fx-background: transparent;
+    -fx-border-color: transparent;
+}
+
+.room-scroll > .viewport {
+    -fx-background-color: transparent;
+}
+
+/* Lesson list buttons (left panel) */
+.lesson-list-btn {
+    -fx-background-color: transparent;
+    -fx-text-fill: #c8c3f8;
+    -fx-alignment: CENTER_LEFT;
+    -fx-padding: 10 14;
+    -fx-font-size: 13px;
+    -fx-cursor: hand;
+    -fx-background-radius: 8;
+    -fx-border-width: 0;
+}
+
+.lesson-list-btn:hover {
+    -fx-background-color: #2a2650;
+    -fx-text-fill: #f0eefc;
+}
+
+/* Placeholder shown when no lesson is selected */
+.room-detail-placeholder {
+    -fx-background-color: #1a1830;
+    -fx-alignment: CENTER;
+}
+
+/* Lesson detail — right panel */
+.lesson-detail-header {
+    -fx-background-color: #1e1c3a;
+    -fx-border-color: #2e2c52;
+    -fx-border-width: 0 0 1 0;
+}
+
+.lesson-detail-title {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f0eefc;
+}
+
+.lesson-content-scroll {
+    -fx-background-color: transparent;
+    -fx-background: transparent;
+    -fx-border-color: transparent;
+}
+
+.lesson-content-scroll > .viewport {
+    -fx-background-color: transparent;
+}
+
+.lesson-content-text {
+    -fx-font-size: 14px;
+    -fx-text-fill: #d8d6f0;
+    -fx-line-spacing: 4;
+    -fx-wrap-text: true;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   COMMENT BUBBLES
+   ══════════════════════════════════════════════════════════════ */
+
+.comment-bubble {
+    -fx-background-color: #1e1c3a;
+    -fx-background-radius: 10;
+    -fx-border-color: #2e2c52;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+}
+
+.comment-author {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.comment-time {
+    -fx-font-size: 11px;
+    -fx-text-fill: #4a4870;
+}
+
+.comment-text {
+    -fx-font-size: 13px;
+    -fx-text-fill: #c8c3f8;
+    -fx-wrap-text: true;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ASSIGNMENT CARDS
+   ══════════════════════════════════════════════════════════════ */
+
+.assignment-card {
+    -fx-background-color: #1e1c3a;
+    -fx-background-radius: 12;
+    -fx-border-color: #2e2c52;
+    -fx-border-radius: 12;
+    -fx-border-width: 1;
+}
+
+.assignment-card:hover {
+    -fx-border-color: #534AB7;
+}
+
+.assignment-submitted {
+    -fx-font-size: 13px;
+    -fx-text-fill: #9ed67a;
+    -fx-font-weight: bold;
+}

@@ -1,0 +1,21 @@
+<component name="libraryTable">
+  <library name="jbcrypt-0.4">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/lib/jbcrypt-0.4.jar!/" />
+      <root url="jar://$USER_HOME$/Downloads/openjfx-26.0.1_windows-x64_bin-sdk/javafx-sdk-26.0.1/lib/javafx.base.jar!/" />
+      <root url="jar://$USER_HOME$/Downloads/openjfx-26.0.1_windows-x64_bin-sdk/javafx-sdk-26.0.1/lib/javafx.controls.jar!/" />
+      <root url="jar://$USER_HOME$/Downloads/openjfx-26.0.1_windows-x64_bin-sdk/javafx-sdk-26.0.1/lib/javafx.fxml.jar!/" />
+      <root url="jar://$USER_HOME$/Downloads/openjfx-26.0.1_windows-x64_bin-sdk/javafx-sdk-26.0.1/lib/javafx.graphics.jar!/" />
+      <root url="jar://$USER_HOME$/Downloads/openjfx-26.0.1_windows-x64_bin-sdk/javafx-sdk-26.0.1/lib/javafx.media.jar!/" />
+      <root url="jar://$USER_HOME$/Downloads/openjfx-26.0.1_windows-x64_bin-sdk/javafx-sdk-26.0.1/lib/javafx.swing.jar!/" />
+      <root url="jar://$USER_HOME$/Downloads/openjfx-26.0.1_windows-x64_bin-sdk/javafx-sdk-26.0.1/lib/javafx.web.jar!/" />
+      <root url="jar://$USER_HOME$/Downloads/openjfx-26.0.1_windows-x64_bin-sdk/javafx-sdk-26.0.1/lib/javafx-swt.jar!/" />
+      <root url="jar://$USER_HOME$/Downloads/openjfx-26.0.1_windows-x64_bin-sdk/javafx-sdk-26.0.1/lib/jdk.jsobject.jar!/" />
+      <root url="jar://$USER_HOME$/Downloads/openjfx-26.0.1_windows-x64_bin-sdk/javafx-sdk-26.0.1/lib/jfx.incubator.input.jar!/" />
+      <root url="jar://$USER_HOME$/Downloads/openjfx-26.0.1_windows-x64_bin-sdk/javafx-sdk-26.0.1/lib/jfx.incubator.richtext.jar!/" />
+      <root url="jar://$PROJECT_DIR$/lib/postgresql-42.7.11.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

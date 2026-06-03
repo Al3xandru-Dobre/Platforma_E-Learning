@@ -1,0 +1,61 @@
+action_name,timestamp,user_email,detail
+user_register,2026-06-03T22:43:09,contro2012@gmail.com,Teacher: Alex Ion
+user_logout,2026-06-03T22:43:09,contro2012@gmail.com,
+dashboard_opened,2026-06-03T22:43:09,contro2012@gmail.com,Teacher
+user_login,2026-06-03T22:44:12,contro2012@gmail.com,
+user_logout,2026-06-03T22:44:12,contro2012@gmail.com,
+dashboard_opened,2026-06-03T22:44:12,contro2012@gmail.com,Teacher
+user_login,2026-06-03T23:01:28,contro2012@gmail.com,
+dashboard_opened,2026-06-03T23:01:28,contro2012@gmail.com,Teacher
+course_created,2026-06-03T23:01:41,contro2012@gmail.com,Siruri de numere
+profile_viewed,2026-06-03T23:04:49,contro2012@gmail.com,
+profile_name_updated,2026-06-03T23:04:58,contro2012@gmail.com,Alex Ion -> Alex Babmbucea
+user_logout,2026-06-03T23:05:17,contro2012@gmail.com,
+user_register,2026-06-03T23:05:50,ionnicolae@test.ro,Student: Ion Nicolae
+dashboard_opened,2026-06-03T23:05:50,ionnicolae@test.ro,Student
+profile_viewed,2026-06-03T23:06:06,ionnicolae@test.ro,
+user_logout,2026-06-03T23:06:16,ionnicolae@test.ro,
+user_login,2026-06-03T23:47:35,contro2012@gmail.com,
+dashboard_opened,2026-06-03T23:47:35,contro2012@gmail.com,Teacher
+profile_viewed,2026-06-03T23:47:59,contro2012@gmail.com,
+profile_viewed,2026-06-03T23:49:31,contro2012@gmail.com,
+profile_viewed,2026-06-03T23:49:31,contro2012@gmail.com,
+profile_viewed,2026-06-03T23:50:12,contro2012@gmail.com,
+user_login,2026-06-03T23:51:35,contro2012@gmail.com,
+dashboard_opened,2026-06-03T23:51:35,contro2012@gmail.com,Teacher
+whiteboard_opened,2026-06-03T23:51:40,contro2012@gmail.com,Siruri de numere
+lesson_created,2026-06-03T23:51:57,contro2012@gmail.com,Ceva
+lesson_viewed,2026-06-03T23:51:58,contro2012@gmail.com,Ceva
+whiteboard_entry_added,2026-06-03T23:52:17,contro2012@gmail.com,Tabla — Siruri de numere
+whiteboard_saved_to_lesson,2026-06-03T23:52:19,contro2012@gmail.com,Ceva
+profile_viewed,2026-06-03T23:52:31,contro2012@gmail.com,
+course_created,2026-06-03T23:52:48,contro2012@gmail.com,Siruri de caractere
+whiteboard_opened,2026-06-03T23:52:51,contro2012@gmail.com,Siruri de numere
+lesson_viewed,2026-06-03T23:53:06,contro2012@gmail.com,Ceva
+lesson_viewed,2026-06-03T23:53:22,contro2012@gmail.com,Ceva
+lesson_created,2026-06-03T23:53:26,contro2012@gmail.com,dasda
+lesson_viewed,2026-06-03T23:53:27,contro2012@gmail.com,dasda
+lesson_viewed,2026-06-03T23:53:30,contro2012@gmail.com,Ceva
+lesson_viewed,2026-06-03T23:53:32,contro2012@gmail.com,dasda
+lesson_viewed,2026-06-03T23:53:35,contro2012@gmail.com,Ceva
+lesson_viewed,2026-06-03T23:53:38,contro2012@gmail.com,dasda
+whiteboard_opened,2026-06-03T23:53:39,contro2012@gmail.com,Siruri de numere
+lesson_viewed,2026-06-03T23:53:42,contro2012@gmail.com,Ceva
+lesson_viewed,2026-06-03T23:53:43,contro2012@gmail.com,dasda
+lesson_viewed,2026-06-03T23:53:43,contro2012@gmail.com,Ceva
+whiteboard_opened,2026-06-03T23:53:44,contro2012@gmail.com,Siruri de numere
+profile_viewed,2026-06-03T23:53:57,contro2012@gmail.com,
+user_logout,2026-06-03T23:53:58,contro2012@gmail.com,
+user_register,2026-06-03T23:54:43,alexandru.dobre1@s.unibuc.ro,Student: Alexandru Dobreee
+dashboard_opened,2026-06-03T23:54:43,alexandru.dobre1@s.unibuc.ro,Student
+student_enrolled,2026-06-03T23:54:48,alexandru.dobre1@s.unibuc.ro,Siruri de caractere
+whiteboard_opened,2026-06-03T23:54:51,alexandru.dobre1@s.unibuc.ro,Siruri de caractere
+student_enrolled,2026-06-03T23:55:03,alexandru.dobre1@s.unibuc.ro,Siruri de numere
+lesson_viewed,2026-06-03T23:55:06,alexandru.dobre1@s.unibuc.ro,dasda
+lesson_viewed,2026-06-03T23:55:06,alexandru.dobre1@s.unibuc.ro,Ceva
+whiteboard_opened,2026-06-03T23:55:07,alexandru.dobre1@s.unibuc.ro,Siruri de numere
+whiteboard_opened,2026-06-03T23:55:08,alexandru.dobre1@s.unibuc.ro,Siruri de numere
+lesson_viewed,2026-06-03T23:55:11,alexandru.dobre1@s.unibuc.ro,Ceva
+lesson_viewed,2026-06-03T23:55:12,alexandru.dobre1@s.unibuc.ro,dasda
+whiteboard_opened,2026-06-03T23:55:13,alexandru.dobre1@s.unibuc.ro,Siruri de numere
+profile_viewed,2026-06-03T23:55:21,alexandru.dobre1@s.unibuc.ro,
