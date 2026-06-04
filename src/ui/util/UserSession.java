@@ -7,7 +7,7 @@ import models.Teacher;
 
 import java.util.Optional;
 
-public class UserSession {
+public class UserSession extends Singleton<UserSession> {
 
     private static final UserSession INSTANCE = new UserSession();
     private User currentUser = null;

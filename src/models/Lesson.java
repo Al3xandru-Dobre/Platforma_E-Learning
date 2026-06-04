@@ -27,24 +27,20 @@ import java.util.List;
  */
 public class Lesson {
 
+    /**
+     * DB-assigned primary key.  0 means "not yet persisted".
+     * WHY not final? The id doesn't exist until after INSERT RETURNING id,
+     * so we set it once via setId() immediately after the repository saves.
+     */
+    private long   id = 0L;
     private String content;
     private final String name;
     private Teacher author;          // null ⇒ course's own teacher
     private final Date dateOfCreation;
     private final List<Comment> comments = new ArrayList<>();
 
-    /**
-     * Archived whiteboard snapshot saved by the teacher.
-     *
-     * WHY store it as a List<String> of serialised entries rather than a
-     * full WhiteBoard object?
-     * A WhiteBoard has live state (activeUser, mutable entry lists).
-     * A snapshot is a historical record — it should be immutable once saved.
-     * Storing plain strings (each entry's toString() representation) gives
-     * us exactly what we need to render in the lesson view without coupling
-     * Lesson to the WhiteBoard class.
-     */
-    private List<String> whiteboardSnapshot = null; // null means no board saved yet
+    /** Newline-separated whiteboard entries saved to this lesson. */
+    private List<String> whiteboardSnapshot = new ArrayList<>();
 
     public Lesson(String name, Teacher author) {
         this.dateOfCreation = new Date();
@@ -73,30 +69,25 @@ public class Lesson {
     }
 
     // ── Getters ───────────────────────────────────────────────────────────────
+    public long          getId()      { return id; }
+    /** Called once by LessonRepository after INSERT RETURNING id. */
+    public void          setId(long id) { this.id = id; }
     public String        getName()    { return name; }
     public String        getContent() { return content; }
     public Teacher       getAuthor()  { return author; }
     public Date          getDate()    { return new Date(dateOfCreation.getTime()); }
     public List<Comment> getComments(){ return Collections.unmodifiableList(comments); }
 
-    /** True when the teacher has attached a whiteboard snapshot to this lesson. */
-    public boolean hasWhiteboardSnapshot() { return whiteboardSnapshot != null; }
-
-    /** Returns an unmodifiable view of the snapshot entries, or an empty list. */
-    public List<String> getWhiteboardSnapshot() {
-        return whiteboardSnapshot != null
-                ? Collections.unmodifiableList(whiteboardSnapshot)
-                : Collections.emptyList();
+    /**
+     * Stores the whiteboard entries that were snapshotted into this lesson.
+     * Called by LessonRepository.mapRow() when loading from DB.
+     */
+    public void saveWhiteboardSnapshot(List<String> lines) {
+        this.whiteboardSnapshot = new ArrayList<>(lines);
     }
 
-    /**
-     * Save a whiteboard snapshot to this lesson.
-     * Called by the teacher via WhiteBoardController → CourseRoomController.
-     * Once saved, the list is defensive-copied so later changes to the board
-     * don't silently mutate the lesson's archived state.
-     */
-    public void saveWhiteboardSnapshot(List<String> entries) {
-        if (entries == null) throw new IllegalArgumentException("Snapshot-ul nu poate fi null.");
-        this.whiteboardSnapshot = new ArrayList<>(entries);
+    /** Returns an unmodifiable view of the stored whiteboard snapshot. */
+    public List<String> getWhiteboardSnapshot() {
+        return Collections.unmodifiableList(whiteboardSnapshot);
     }
 }

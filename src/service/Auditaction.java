@@ -21,9 +21,11 @@ package service;
 public enum Auditaction {
 
     //-Auth
-    USER_LOGIN          ("user_login"),
-    USER_LOGOUT         ("user_logout"),
-    USER_REGISTER       ("user_register"),
+    USER_LOGIN           ("user_login"),
+    USER_LOGOUT          ("user_logout"),
+    USER_REGISTER        ("user_register"),
+    USER_PASSWORD_RESET  ("user_password_reset"),
+    USER_DELETED         ("user_deleted"),
 
     //-Profile
     PROFILE_VIEWED      ("profile_viewed"),
@@ -34,26 +36,17 @@ public enum Auditaction {
     COURSE_DELETED      ("course_deleted"),
     COURSE_LIST_VIEWED  ("course_list_viewed"),
 
-    //-Lessons
-    LESSON_CREATED      ("lesson_created"),
-    LESSON_VIEWED       ("lesson_viewed"),
-
-    //-Enrollment
-    STUDENT_ENROLLED    ("student_enrolled"),
-    STUDENT_ENROLL_REQUESTED ("student_enroll_requested"),
-    ENROLL_REQUEST_ACCEPTED  ("enroll_request_accepted"),
-    ENROLL_REQUEST_REJECTED  ("enroll_request_rejected"),
 
     //-Tools
-    WHITEBOARD_OPENED        ("whiteboard_opened"),
-    WHITEBOARD_ENTRY_ADDED   ("whiteboard_entry_added"),
-    WHITEBOARD_CLEARED       ("whiteboard_cleared"),
-    WHITEBOARD_SAVED_TO_LESSON("whiteboard_saved_to_lesson"),
-    STICKYNOTES_OPENED       ("stickynotes_opened"),
+    WHITEBOARD_OPENED   ("whiteboard_opened"),
+    WHITEBOARD_ENTRY_ADDED ("whiteboard_entry_added"),
+    WHITEBOARD_CLEARED  ("whiteboard_cleared"),
+    STICKYNOTES_OPENED  ("stickynotes_opened"),
 
     //-Navigation
-    DASHBOARD_OPENED    ("dashboard_opened");
+    DASHBOARD_OPENED    ("dashboard_opened"), STUDENT_ENROLLED("Student-enrolled"), STUDENT_ENROLL_REQUESTED("Student-enroll-request");
 
+    
 
     //-CSV Label
     private final String csvName;

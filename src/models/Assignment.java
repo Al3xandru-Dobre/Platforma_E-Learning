@@ -27,6 +27,12 @@ public class Assignment {
     private static final DateTimeFormatter FMT =
             DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm");
 
+    /**
+     * DB-assigned primary key.  0 means "not yet persisted".
+     * WHY not final? Same reason as Lesson.id — the PK only exists after INSERT.
+     */
+    private long id = 0L;
+
     private final String        title;
     private final String        description;
     private final LocalDateTime createdAt;
@@ -60,6 +66,9 @@ public class Assignment {
     }
 
     // ── Getters ───────────────────────────────────────────────────────────────
+    public long                  getId()          { return id; }
+    /** Called once by AssignmentRepository after INSERT RETURNING id. */
+    public void                  setId(long id)   { this.id = id; }
     public String              getTitle()       { return title; }
     public String              getDescription() { return description; }
     public LocalDateTime       getCreatedAt()   { return createdAt; }

@@ -6,11 +6,10 @@ import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import models.*;
-import repository.EnrollmentRepository;
+import repository.AssignmentRepository;
 import repository.LessonRepository;
-import service.ActionBus;
-import service.Auditaction;
 import service.WhiteBoard;
+import ui.controllers.WhiteBoardController;
 import ui.util.UserSession;
 
 import java.time.LocalDateTime;
@@ -19,81 +18,110 @@ import java.util.List;
 /**
  * CourseRoomController — the classroom view for a single Course.
  *
- * NEW in this version:
+ * LAYOUT:
+ * ┌─────────────────────────────────────────────────────────────────┐
+ * │  Header: course title · subject chip · enrolled count · back    │
+ * ├───────────────────┬─────────────────────────────────────────────┤
+ * │  Lesson list      │  Active lesson: content + comment thread    │
+ * │  (left panel)     │  (right panel)                              │
+ * │                   │                                             │
+ * │  [+ Add Lesson]   │  [text area + Post comment]                 │
+ * │  (teacher only)   │                                             │
+ * ├───────────────────┴─────────────────────────────────────────────┤
+ * │  Assignments tab (toggle between Lessons and Assignments)        │
+ * └─────────────────────────────────────────────────────────────────┘
  *
- *   1. LESSON DASHBOARD — clicking a lesson name opens a full "Lesson Detail"
- *      view with title, content, whiteboard snapshot, and comments. This is
- *      a separate Node (buildLessonDashboard) swapped into lessonDetailPane.
+ * WHY two tabs (Lessons / Assignments) instead of a sidebar?
+ * The two concepts are fundamentally different:
+ *   - A lesson is content the teacher *broadcasts* and students *read + comment on*.
+ *   - An assignment is a task students *submit answers to*.
+ * Tabs make the separation visually clear and avoid a cluttered sidebar.
  *
- *   2. ADD LESSON → DB — showAddLessonDialog() now calls LessonRepository.save()
- *      so lessons survive a restart.
- *
- *   3. WHITEBOARD PER LESSON — teacher can open a WhiteBoardController scoped
- *      to the course's board, with availableLessons set, enabling "Save to lesson".
- *
- *   4. OBSERVER EVENTS — all meaningful actions publish to ActionBus.
- *
- *   5. LOAD LESSONS FROM DB — buildLessonsPane() loads persisted lessons on entry.
- *
- * Access rules:
- *   - "Add lesson" button  → only visible when isTeacher AND email == course.creatorEmail
- *   - "Open board" button  → teacher: editable; student: archived read-only view
+ * WHY does the controller receive a Runnable onBack?
+ * This controller is embedded inside BaseDashboardController.setContent().
+ * It has no stage of its own. Instead of navigating, it calls onBack()
+ * which the parent (TeacherDashboardController / StudentDashboardController)
+ * provides — typically "go back to the courses panel." This keeps navigation
+ * logic out of CourseRoomController entirely.
  */
 public class CourseroomController {
 
-    private final Course   course;
-    private final boolean  isTeacher;
-    private final boolean  isCourseOwner;     // teacher AND created this course
-    private final String   currentUserName;
-    private final String   currentUserRole;
-    private final String   currentUserEmail;
-    private final Runnable onBack;
+    private final Course     course;
+    private final boolean    isTeacher;
+    private final String     currentUserName;
+    private final String     currentUserRole;
+    private final String     currentUserEmail;
+    private final Runnable   onBack;
+    /**
+     * Optional whiteboard reference — supplied by TeacherDashboardController.
+     * When present (teacher context), a "Save board to lesson" button appears
+     * in the lesson detail pane. null in student context.
+     */
+    private final WhiteBoard whiteBoard;
 
-    // Per-course whiteboard (teacher's tool)
-    private final WhiteBoard courseBoard;
-
-    // Live UI references updated on data changes
+    // Live reference to the right-hand lesson detail pane — rebuilt when a lesson is selected.
     private StackPane lessonDetailPane;
-    private VBox      lessonListItems;
-    private VBox      assignmentsListPane;
+    // Live reference to the assignments list pane.
+    private VBox assignmentsListPane;
 
+    /** Student-facing constructor — no whiteboard. */
     public CourseroomController(Course course, Runnable onBack) {
-        this.course          = course;
-        this.onBack          = onBack;
-        this.isTeacher       = "Teacher".equals(UserSession.get().role());
-        this.currentUserName = UserSession.get().currentUser().map(u -> u.getName()).orElse("Anonim");
-        this.currentUserRole = UserSession.get().role();
-        this.currentUserEmail= UserSession.get().currentUser().map(u -> u.getEmail()).orElse("");
-        this.isCourseOwner   = isTeacher &&
-                course.getCreatorEmail().equalsIgnoreCase(currentUserEmail);
-        this.courseBoard     = new WhiteBoard("Tabla — " + course.getTitle());
-        UserSession.get().currentUser().ifPresent(courseBoard::setActiveUser);
-
-        // Load persisted lessons from DB into the in-memory Course object
-        loadLessonsFromDb();
+        this(course, onBack, null);
     }
 
-    private void loadLessonsFromDb() {
-        if (course.getId() == 0) return; // unsaved/stub course
-        try {
-            List<Lesson> persisted = LessonRepository.findByCourse(course.getId());
-            // Only add lessons not already present (idempotent on repeated opens)
-            if (course.getLessons().isEmpty()) {
-                persisted.forEach(course::addLesson);
-            }
-        } catch (Exception ex) {
-            System.err.println("[CourseRoom] Could not load lessons: " + ex.getMessage());
-        }
+    /** Teacher-facing constructor — with whiteboard for snapshot saving. */
+    public CourseroomController(Course course, Runnable onBack, WhiteBoard whiteBoard) {
+        this.course           = course;
+        this.onBack           = onBack;
+        this.whiteBoard       = whiteBoard;
+        this.isTeacher        = "Teacher".equals(UserSession.get().role());
+        this.currentUserName  = UserSession.get().currentUser()
+                .map(u -> u.getName()).orElse("Anonim");
+        this.currentUserRole  = UserSession.get().role();
+        this.currentUserEmail = UserSession.get().currentUser()
+                .map(u -> u.getEmail()).orElse("");
     }
-
-    // ── Root ──────────────────────────────────────────────────────────────────
 
     public Node buildRoot() {
         BorderPane root = new BorderPane();
         root.getStyleClass().add("content-area");
+
+        // ── Hydrate from DB ──────────────────────────────────────────────────
+        // WHY here and not in the constructor?
+        // buildRoot() is called exactly once per CourseRoomController instance,
+        // right before the scene is shown. Loading in the constructor would run
+        // DB queries even if the controller is never displayed (e.g. in tests).
+        // Loading here keeps construction cheap and IO predictable.
+        hydrateCourseFromDb();
+
         root.setTop(buildHeader());
         root.setCenter(buildTabArea());
+
         return root;
+    }
+
+    /**
+     * Reload lessons and assignments from the database into the in-memory Course.
+     *
+     * WHY clear and reload instead of merging?
+     * The in-memory Course may already have data added in this session.
+     * Re-loading from DB on open avoids duplicates and ensures the student
+     * sees everything the teacher persisted — even across different sessions.
+     *
+     * Note: clearLessons() / clearAssignments() methods are added to Course
+     * so this controller can replace the in-memory list without exposing
+     * the mutable backing collection directly.
+     */
+    private void hydrateCourseFromDb() {
+        if (course.getId() == 0L) return; // transient course — nothing to load
+
+        course.clearLessons();
+        LessonRepository.findByCourse(course.getId())
+                .forEach(course::addLesson);
+
+        course.clearAssignments();
+        AssignmentRepository.findByCourse(course.getId())
+                .forEach(course::addAssignment);
     }
 
     // ── Header ────────────────────────────────────────────────────────────────
@@ -103,6 +131,7 @@ public class CourseroomController {
         header.getStyleClass().add("room-header");
         header.setPadding(new Insets(20, 32, 16, 32));
 
+        // Top row: back button + title
         Button backBtn = new Button("← Inapoi");
         backBtn.getStyleClass().add("ghost-btn");
         backBtn.setOnAction(e -> onBack.run());
@@ -110,14 +139,10 @@ public class CourseroomController {
         Label title = new Label(course.getTitle());
         title.getStyleClass().add("content-heading");
 
-        // Privacy badge
-        String privacy = course.isPublic() ? "🌐 Public" : "🔒 Privat";
-        Label privacyLbl = new Label(privacy);
-        privacyLbl.getStyleClass().add(course.isPublic() ? "subject-chip" : "privacy-chip-private");
-
-        HBox titleRow = new HBox(16, backBtn, title, privacyLbl);
+        HBox titleRow = new HBox(16, backBtn, title);
         titleRow.setAlignment(Pos.CENTER_LEFT);
 
+        // Bottom row: subject chip + enrolled count + teacher name
         Label subjectChip = new Label(course.getSubject().getLabel());
         subjectChip.getStyleClass().add("subject-chip");
 
@@ -141,52 +166,38 @@ public class CourseroomController {
         VBox container = new VBox(0);
         VBox.setVgrow(container, Priority.ALWAYS);
 
+        // Tab buttons
         Button lessonsTab     = new Button("📖  Lectii");
         Button assignmentsTab = new Button("📝  Teme");
-        Button boardTab       = new Button("🖊  Tabla");
         lessonsTab.getStyleClass().addAll("room-tab-btn", "room-tab-active");
         assignmentsTab.getStyleClass().add("room-tab-btn");
-        boardTab.getStyleClass().add("room-tab-btn");
 
-        HBox tabs = new HBox(0, lessonsTab, assignmentsTab, boardTab);
+        HBox tabs = new HBox(0, lessonsTab, assignmentsTab);
         tabs.getStyleClass().add("room-tab-bar");
         tabs.setPadding(new Insets(0, 32, 0, 32));
 
+        // Content area — swapped by tab buttons
         StackPane contentSwap = new StackPane();
         VBox.setVgrow(contentSwap, Priority.ALWAYS);
 
         Node lessonsPane     = buildLessonsPane();
         Node assignmentsPane = buildAssignmentsPane();
 
-        // Build the WhiteBoard controller scoped to this course
-        WhiteBoardController wbc = new WhiteBoardController(courseBoard);
-        if (isCourseOwner) wbc.setAvailableLessons(course.getLessons());
-        Node boardPane = wbc.buildRoot();
-
-        contentSwap.getChildren().add(lessonsPane);
+        contentSwap.getChildren().add(lessonsPane);   // lessons shown by default
 
         lessonsTab.setOnAction(e -> {
             contentSwap.getChildren().setAll(lessonsPane);
-            setActive(lessonsTab, assignmentsTab, boardTab);
+            lessonsTab.getStyleClass().add("room-tab-active");
+            assignmentsTab.getStyleClass().remove("room-tab-active");
         });
         assignmentsTab.setOnAction(e -> {
             contentSwap.getChildren().setAll(assignmentsPane);
-            setActive(assignmentsTab, lessonsTab, boardTab);
-        });
-        boardTab.setOnAction(e -> {
-            ActionBus.get().publish(Auditaction.WHITEBOARD_OPENED, currentUserEmail,
-                    course.getTitle());
-            contentSwap.getChildren().setAll(boardPane);
-            setActive(boardTab, lessonsTab, assignmentsTab);
+            assignmentsTab.getStyleClass().add("room-tab-active");
+            lessonsTab.getStyleClass().remove("room-tab-active");
         });
 
         container.getChildren().addAll(tabs, contentSwap);
         return container;
-    }
-
-    private void setActive(Button active, Button... others) {
-        active.getStyleClass().add("room-tab-active");
-        for (Button b : others) b.getStyleClass().remove("room-tab-active");
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -196,11 +207,13 @@ public class CourseroomController {
     private Node buildLessonsPane() {
         SplitPane split = new SplitPane();
         split.getStyleClass().add("room-split");
-        split.setDividerPositions(0.30);
+        split.setDividerPositions(0.30);   // left panel = 30%, right = 70%
         VBox.setVgrow(split, Priority.ALWAYS);
 
+        // Left: lesson list + add button
         VBox left = buildLessonList(split);
 
+        // Right: placeholder until a lesson is selected
         lessonDetailPane = new StackPane();
         lessonDetailPane.getStyleClass().add("room-detail-placeholder");
         Label placeholder = new Label("Selecteaza o lectie din stanga.");
@@ -219,34 +232,35 @@ public class CourseroomController {
         Label heading = new Label("LECTII");
         heading.getStyleClass().add("sidebar-section");
 
-        lessonListItems = new VBox(6);
-        refreshLessonList();
+        VBox listItems = new VBox(6);
+        refreshLessonList(listItems);
 
-        ScrollPane scroll = new ScrollPane(lessonListItems);
+        ScrollPane scroll = new ScrollPane(listItems);
         scroll.setFitToWidth(true);
         scroll.getStyleClass().add("room-scroll");
         VBox.setVgrow(scroll, Priority.ALWAYS);
 
         left.getChildren().addAll(heading, scroll);
 
-        if (isCourseOwner) {
+        // "Add lesson" button — teacher only
+        if (isTeacher) {
             Button addBtn = new Button("+ Adauga lectie");
             addBtn.getStyleClass().add("primary-btn");
             addBtn.setMaxWidth(Double.MAX_VALUE);
-            addBtn.setOnAction(e -> showAddLessonDialog());
+            addBtn.setOnAction(e -> showAddLessonDialog(listItems));
             left.getChildren().add(addBtn);
         }
 
         return left;
     }
 
-    private void refreshLessonList() {
-        lessonListItems.getChildren().clear();
+    private void refreshLessonList(VBox container) {
+        container.getChildren().clear();
         List<Lesson> lessons = course.getLessons();
         if (lessons.isEmpty()) {
             Label empty = new Label("Nicio lectie adaugata inca.");
             empty.getStyleClass().add("content-sub");
-            lessonListItems.getChildren().add(empty);
+            container.getChildren().add(empty);
             return;
         }
         for (int i = 0; i < lessons.size(); i++) {
@@ -256,30 +270,23 @@ public class CourseroomController {
             btn.getStyleClass().add("lesson-list-btn");
             btn.setMaxWidth(Double.MAX_VALUE);
             btn.setOnAction(e -> {
-                ActionBus.get().publish(Auditaction.LESSON_VIEWED,
-                        currentUserEmail, lesson.getName());
-                lessonDetailPane.getChildren().setAll(buildLessonDashboard(lesson));
+                lessonDetailPane.getChildren().setAll(buildLessonDetail(lesson));
             });
-            lessonListItems.getChildren().add(btn);
+            container.getChildren().add(btn);
         }
     }
 
-    /**
-     * Shows the Add Lesson dialog and persists to DB.
-     * WHY inline dialog instead of a separate screen?
-     * The teacher is already in the classroom context. A dialog keeps them
-     * anchored there and returns immediately on completion.
-     */
-    private void showAddLessonDialog() {
+    private void showAddLessonDialog(VBox listContainer) {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle("Lectie noua");
-        dialog.setHeaderText("Adauga o lectie noua in cursul \"" + course.getTitle() + "\"");
+        dialog.setHeaderText("Adauga o lectie noua");
 
         ButtonType saveType = new ButtonType("Salveaza", ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(saveType, ButtonType.CANCEL);
 
         GridPane grid = new GridPane();
-        grid.setHgap(12); grid.setVgap(12);
+        grid.setHgap(12);
+        grid.setVgap(12);
         grid.setPadding(new Insets(16));
 
         TextField nameField = new TextField();
@@ -298,46 +305,35 @@ public class CourseroomController {
         dialog.getDialogPane().setPrefWidth(520);
 
         dialog.showAndWait().ifPresent(btn -> {
-            if (btn != saveType) return;
-            String name    = nameField.getText().trim();
-            String content = contentArea.getText().trim();
-            if (name.isBlank()) return;
+            if (btn == saveType) {
+                String name    = nameField.getText().trim();
+                String content = contentArea.getText().trim();
+                if (name.isBlank()) return;
 
-            Lesson lesson = new Lesson(name);
-            lesson.setContent(content.isBlank() ? null : content);
-            course.addLesson(lesson);
+                Lesson lesson = new Lesson(name);
+                lesson.setContent(content.isBlank() ? null : content);
 
-            // Persist to DB
-            if (course.getId() != 0) {
-                try {
-                    LessonRepository.save(course.getId(), lesson);
-                } catch (Exception ex) {
-                    System.err.println("[CourseRoom] Could not save lesson to DB: " + ex.getMessage());
+                // Persist to DB — this is what was missing before.
+                // Without this call, lessons only lived in memory and vanished
+                // when the course room was closed.
+                if (course.getId() != 0L) {
+                    long lessonId = LessonRepository.save(course.getId(), lesson);
+                    lesson.setId(lessonId);
                 }
-            }
 
-            ActionBus.get().publish(Auditaction.LESSON_CREATED, currentUserEmail, name);
-            refreshLessonList();
+                course.addLesson(lesson);
+                refreshLessonList(listContainer);
+            }
         });
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // LESSON DASHBOARD
-    // ══════════════════════════════════════════════════════════════════════════
+    // ── Lesson detail (right pane) ────────────────────────────────────────────
 
-    /**
-     * Full lesson dashboard — content, archived whiteboard, comments.
-     *
-     * WHY a separate method and not the old buildLessonDetail()?
-     * The old method was minimal (title + content + comments). The dashboard
-     * adds a "Tabla arhivata" section and a conditional "Editeaza tabla" button.
-     * Keeping it separate makes both readable.
-     */
-    private Node buildLessonDashboard(Lesson lesson) {
-        VBox dashboard = new VBox(0);
-        dashboard.getStyleClass().add("room-lesson-detail");
+    private Node buildLessonDetail(Lesson lesson) {
+        VBox detail = new VBox(0);
+        detail.getStyleClass().add("room-lesson-detail");
 
-        // ── Lesson header ─────────────────────────────────────────────────────
+        // Lesson header
         VBox lessonHeader = new VBox(4);
         lessonHeader.getStyleClass().add("lesson-detail-header");
         lessonHeader.setPadding(new Insets(20, 24, 16, 24));
@@ -354,7 +350,33 @@ public class CourseroomController {
 
         lessonHeader.getChildren().addAll(lessonTitle, authorLabel);
 
-        // ── Lesson content ────────────────────────────────────────────────────
+        // Teacher-only shortcut: open the whiteboard directly from lesson context.
+        // WHY here in the header, not in the snapshot section?
+        // The snapshot section is about *saving* a finished board state to the lesson.
+        // This button is about *opening* the live board while teaching — a different
+        // action at a different point in the workflow. Keeping them separate avoids
+        // confusion: "Open board" = start writing, "Save board to lesson" = persist.
+        if (isTeacher && whiteBoard != null) {
+            Button openBoardBtn = new Button("🖊  Deschide Tabla");
+            openBoardBtn.getStyleClass().add("ghost-btn");
+            openBoardBtn.setOnAction(e -> {
+                // Navigate to the whiteboard via the parent dashboard's setContent().
+                // We can't call setContent() directly — CourseroomController is not a
+                // BaseDashboardController. Instead we fire through the lesson detail
+                // pane's scene, walking up to find the BaseDashboardController wrapper.
+                // The cleanest solution that requires zero new coupling: store a
+                // Runnable openBoard reference set by TeacherDashboardController.
+                // For now we use the whiteBoard reference directly to open a new
+                // WhiteBoardController scene overlay in the lesson detail pane itself.
+                lessonDetailPane.getChildren().setAll(
+                        new WhiteBoardController(whiteBoard).buildRoot());
+            });
+            HBox actionRow = new HBox(openBoardBtn);
+            actionRow.setPadding(new Insets(6, 0, 0, 0));
+            lessonHeader.getChildren().add(actionRow);
+        }
+
+        // Lesson content
         Label contentLabel = new Label(
                 lesson.getContent() != null ? lesson.getContent() : "(Niciun continut adaugat inca.)");
         contentLabel.getStyleClass().add("lesson-content-text");
@@ -366,78 +388,85 @@ public class CourseroomController {
         contentScroll.setPadding(new Insets(16, 24, 16, 24));
         VBox.setVgrow(contentScroll, Priority.ALWAYS);
 
-        // ── Archived whiteboard section ───────────────────────────────────────
-        Node boardSection = buildArchivedBoardSection(lesson);
-
-        // ── Comment section ───────────────────────────────────────────────────
+        // Comment section
         Node commentSection = buildCommentSection(lesson);
 
-        dashboard.getChildren().addAll(
-                lessonHeader, contentScroll,
-                new Separator(), boardSection,
-                new Separator(), commentSection);
+        detail.getChildren().addAll(lessonHeader, contentScroll, new Separator(), commentSection);
 
-        VBox.setVgrow(dashboard, Priority.ALWAYS);
-        return dashboard;
+        // ── Whiteboard snapshot section ────────────────────────────────────────
+        // If this lesson has a saved snapshot, show it read-only for everyone.
+        // If the teacher has a live board, also show a "Save board to lesson" button.
+        List<String> snapshot = lesson.getWhiteboardSnapshot();
+        if (!snapshot.isEmpty() || (isTeacher && whiteBoard != null)) {
+            detail.getChildren().add(new Separator());
+            detail.getChildren().add(buildSnapshotSection(lesson));
+        }
+
+        VBox.setVgrow(detail, Priority.ALWAYS);
+        return detail;
     }
 
     /**
-     * Renders the archived whiteboard panel inside a lesson dashboard.
+     * Builds the whiteboard snapshot sub-panel inside a lesson detail.
      *
-     * Access rules (enforced here, not in WhiteBoardController):
-     *   - Teacher who owns the course → sees "Editeaza tabla" button which opens
-     *     the full WhiteBoardController so they can save a new snapshot.
-     *   - All others (students, other teachers) → read-only snapshot view.
+     * For teachers: shows the snapshot + a "Save current board to lesson" button.
+     * For students: shows the snapshot read-only.
+     *
+     * WHY keep this separate from buildLessonDetail?
+     * Snapshot logic is optional and has its own conditional visibility rules.
+     * A dedicated method keeps buildLessonDetail readable.
      */
-    private Node buildArchivedBoardSection(Lesson lesson) {
+    private Node buildSnapshotSection(Lesson lesson) {
         VBox section = new VBox(10);
-        section.setPadding(new Insets(16, 24, 12, 24));
+        section.setPadding(new Insets(16, 24, 16, 24));
 
-        Label heading = new Label("🖊  Tabla lectiei");
+        Label heading = new Label("🖊  Tabla salvata");
         heading.getStyleClass().add("lesson-detail-title");
+        section.getChildren().add(heading);
 
-        WhiteBoardController wbc = new WhiteBoardController(courseBoard);
-
-        if (!lesson.hasWhiteboardSnapshot()) {
-            Label none = new Label("Nicio tabla salvata pentru aceasta lectie.");
-            none.getStyleClass().add("content-sub");
-
-            if (isCourseOwner) {
-                // Provide button to open the board and save to this lesson
-                Button openBoardBtn = new Button("🖊  Deschide tabla si salveaza");
-                openBoardBtn.getStyleClass().add("primary-btn");
-                openBoardBtn.setOnAction(e -> {
-                    wbc.setAvailableLessons(List.of(lesson));
-                    lessonDetailPane.getChildren().setAll(wbc.buildRoot());
-                });
-                section.getChildren().addAll(heading, none, openBoardBtn);
-            } else {
-                section.getChildren().addAll(heading, none);
-            }
+        List<String> snapshot = lesson.getWhiteboardSnapshot();
+        if (snapshot.isEmpty()) {
+            Label empty = new Label("Nicio tabla salvata inca pentru aceasta lectie.");
+            empty.getStyleClass().add("content-sub");
+            section.getChildren().add(empty);
         } else {
-            // Snapshot exists — show it
-            Node archivedView = wbc.buildArchivedView(lesson);
+            ListView<String> snapshotView = new ListView<>();
+            snapshotView.getItems().addAll(snapshot);
+            snapshotView.setPrefHeight(Math.min(snapshot.size() * 28.0 + 20, 200));
+            snapshotView.getStyleClass().add("board-list");
+            snapshotView.setEditable(false);
+            section.getChildren().add(snapshotView);
+        }
 
-            if (isCourseOwner) {
-                // Teacher can replace the snapshot
-                Button editBtn = new Button("✏️  Editeaza tabla");
-                editBtn.getStyleClass().add("ghost-btn");
-                editBtn.setOnAction(e -> {
-                    wbc.setAvailableLessons(List.of(lesson));
-                    lessonDetailPane.getChildren().setAll(wbc.buildRoot());
-                });
-                HBox headRow = new HBox(16, heading, editBtn);
-                headRow.setAlignment(Pos.CENTER_LEFT);
-                section.getChildren().addAll(headRow, archivedView);
-            } else {
-                section.getChildren().addAll(heading, archivedView);
-            }
+        // Teacher-only: save current board state to this lesson
+        if (isTeacher && whiteBoard != null && lesson.getId() != 0L) {
+            Button saveBtn = new Button("💾  Salveaza tabla curenta la lectie");
+            saveBtn.getStyleClass().add("primary-btn");
+            saveBtn.setOnAction(e -> {
+                List<String> lines = whiteBoard.toSnapshotLines();
+                LessonRepository.saveSnapshot(lesson.getId(), lines);
+                lesson.saveWhiteboardSnapshot(lines);
+                // Refresh the snapshot view inline
+                section.getChildren().removeIf(n -> n instanceof ListView<?>);
+                if (!lines.isEmpty()) {
+                    ListView<String> updated = new ListView<>();
+                    updated.getItems().addAll(lines);
+                    updated.setPrefHeight(Math.min(lines.size() * 28.0 + 20, 200));
+                    updated.getStyleClass().add("board-list");
+                    updated.setEditable(false);
+                    section.getChildren().add(1, updated);
+                }
+                // Update the heading label (index 0 in children)
+                section.getChildren().removeIf(n ->
+                        n instanceof Label l && l.getText().startsWith("Nicio tabla"));
+                new Alert(Alert.AlertType.INFORMATION,
+                        "Tabla a fost salvata la lectie.", ButtonType.OK).showAndWait();
+            });
+            section.getChildren().add(saveBtn);
         }
 
         return section;
     }
-
-    // ── Comment section ───────────────────────────────────────────────────────
 
     private Node buildCommentSection(Lesson lesson) {
         VBox section = new VBox(10);
@@ -448,6 +477,7 @@ public class CourseroomController {
         Label heading = new Label("💬  Comentarii (" + lesson.getComments().size() + ")");
         heading.getStyleClass().add("lesson-detail-title");
 
+        // Existing comments
         VBox commentList = new VBox(8);
         renderComments(commentList, lesson);
 
@@ -456,6 +486,7 @@ public class CourseroomController {
         commentScroll.getStyleClass().add("room-scroll");
         VBox.setVgrow(commentScroll, Priority.ALWAYS);
 
+        // New comment input row
         TextField commentField = new TextField();
         commentField.setPromptText("Scrie un comentariu...");
         commentField.getStyleClass().add("field");
@@ -489,7 +520,9 @@ public class CourseroomController {
             container.getChildren().add(empty);
             return;
         }
-        for (Comment c : lesson.getComments()) container.getChildren().add(buildCommentBubble(c));
+        for (Comment c : lesson.getComments()) {
+            container.getChildren().add(buildCommentBubble(c));
+        }
     }
 
     private Node buildCommentBubble(Comment c) {
@@ -497,8 +530,10 @@ public class CourseroomController {
         bubble.getStyleClass().add("comment-bubble");
         bubble.setPadding(new Insets(10, 14, 10, 14));
 
+        // Author row: name badge + timestamp
         Label nameLbl = new Label(c.authorName());
-        nameLbl.getStyleClass().addAll("comment-author", "role-" + c.authorRole().toLowerCase());
+        nameLbl.getStyleClass().addAll("comment-author",
+                "role-" + c.authorRole().toLowerCase());
 
         Label timeLbl = new Label(c.formattedTime());
         timeLbl.getStyleClass().add("comment-time");
@@ -530,7 +565,8 @@ public class CourseroomController {
         Label heading = new Label("Teme si exercitii");
         heading.getStyleClass().add("content-heading");
 
-        if (isCourseOwner) {
+        // "Add assignment" button — teacher only
+        if (isTeacher) {
             Button addBtn = new Button("+ Adauga tema");
             addBtn.getStyleClass().add("primary-btn");
             addBtn.setOnAction(e -> showAddAssignmentDialog(pane));
@@ -542,6 +578,7 @@ public class CourseroomController {
             pane.getChildren().add(heading);
         }
 
+        // Assignment cards list
         assignmentsListPane = new VBox(12);
         renderAssignments(assignmentsListPane);
 
@@ -563,7 +600,9 @@ public class CourseroomController {
             container.getChildren().add(empty);
             return;
         }
-        for (Assignment a : list) container.getChildren().add(buildAssignmentCard(a));
+        for (Assignment a : list) {
+            container.getChildren().add(buildAssignmentCard(a));
+        }
     }
 
     private Node buildAssignmentCard(Assignment assignment) {
@@ -571,7 +610,8 @@ public class CourseroomController {
         card.getStyleClass().add("assignment-card");
         card.setPadding(new Insets(16));
 
-        Label titleLbl    = new Label(assignment.getTitle());
+        // Title row
+        Label titleLbl = new Label(assignment.getTitle());
         titleLbl.getStyleClass().add("course-row-title");
 
         Label deadlineLbl = new Label("⏰ " + assignment.formattedDeadline());
@@ -586,6 +626,7 @@ public class CourseroomController {
 
         card.getChildren().addAll(titleRow, descLbl);
 
+        // Student submission area
         if (!isTeacher) {
             boolean submitted = assignment.hasSubmitted(currentUserEmail);
             if (submitted) {
@@ -607,9 +648,11 @@ public class CourseroomController {
                     assignment.submit(currentUserEmail, text);
                     renderAssignments(assignmentsListPane);
                 });
+
                 card.getChildren().addAll(submitArea, submitBtn);
             }
         } else {
+            // Teacher sees the submission count
             int count = assignment.getSubmissions().size();
             Label subCount = new Label("📥 " + count + " rezolvare(i) primite");
             subCount.getStyleClass().add("content-sub");
@@ -628,7 +671,8 @@ public class CourseroomController {
         dialog.getDialogPane().getButtonTypes().addAll(saveType, ButtonType.CANCEL);
 
         GridPane grid = new GridPane();
-        grid.setHgap(12); grid.setVgap(12);
+        grid.setHgap(12);
+        grid.setVgap(12);
         grid.setPadding(new Insets(16));
 
         TextField titleField    = new TextField();
@@ -660,10 +704,27 @@ public class CourseroomController {
             String dl = deadlineField.getText().trim();
             if (!dl.isBlank()) {
                 try { deadline = LocalDateTime.parse(dl); }
-                catch (Exception ignored) {}
+                catch (Exception ignored) { /* malformed date — treat as no deadline */ }
             }
 
-            course.addAssignment(new Assignment(title, desc, deadline));
+            Assignment a = new Assignment(title, desc, deadline);
+
+            // ── THE BUG FIX ────────────────────────────────────────────────────
+            // Before: course.addAssignment() only mutated the in-memory list.
+            //         When a student opened the course, a fresh Course was
+            //         loaded from DB (via CourseRepository), which had an empty
+            //         assignments list. Students saw nothing.
+            //
+            // After: we INSERT a row into the assignments table first.
+            //         When ANY user opens the course, hydrateCourseFromDb()
+            //         calls AssignmentRepository.findByCourse() and reloads
+            //         all persisted assignments — including ones the teacher
+            //         created in a previous session.
+            if (course.getId() != 0L) {
+                AssignmentRepository.save(course.getId(), a);
+            }
+
+            course.addAssignment(a);
             renderAssignments(assignmentsListPane);
         });
     }

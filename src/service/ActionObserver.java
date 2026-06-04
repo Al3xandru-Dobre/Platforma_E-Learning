@@ -1,7 +1,6 @@
 package service;
 
 /**
- * ActionObserver — the "Observer" side of the Observer pattern.
  *
  * WHY a functional interface (@FunctionalInterface)?
  * It lets callers register lambdas or method references instead of
@@ -20,11 +19,5 @@ package service;
  */
 @FunctionalInterface
 public interface ActionObserver {
-    /**
-     * Called by ActionBus whenever a UserActionEvent is published.
-     *
-     * Implementations MUST NOT throw unchecked exceptions that would
-     * propagate back to the publisher — catch internally and log to stderr.
-     */
     void onAction(UserActionEvent event);
 }

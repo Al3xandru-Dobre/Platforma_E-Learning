@@ -6,11 +6,9 @@ import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import models.Course;
-import models.Student;
 import models.Subject;
 import models.Teacher;
 import repository.Courserepository;
-import repository.EnrollmentRepository;
 import service.ActionBus;
 import service.Auditaction;
 import service.WhiteBoard;
@@ -288,8 +286,10 @@ public class TeacherDashboardController extends BaseDashboardController {
     }
 
     private void openClassRoom(Course course) {
+        // Pass the teacher's whiteBoard so the lesson detail can show a
+        // "Save board to lesson" button — the whiteboard snapshot feature.
         setContent(new CourseroomController(course,
-                () -> setContent(buildCoursesPanel())).buildRoot());
+                () -> setContent(buildCoursesPanel()), whiteBoard).buildRoot());
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

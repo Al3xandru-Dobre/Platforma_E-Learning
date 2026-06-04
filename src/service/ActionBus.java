@@ -1,34 +1,22 @@
 package service;
 
+import ui.util.Singleton;
+
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * ActionBus — the "Subject" in the Observer pattern.
  *
- * Responsibilities:
- *   1. Maintain a list of ActionObserver subscribers.
- *   2. Dispatch a UserActionEvent to every subscriber when publish() is called.
- *
- * WHY a Singleton?
- * The bus must be the same object everywhere in the app — controllers subscribe
- * to it at startup, and later publish() calls must reach those same subscribers.
- * A static singleton guarantees this without passing the bus around.
- *
- * WHY CopyOnWriteArrayList instead of ArrayList?
- * publish() iterates the list. If a subscriber ever calls subscribe() or
- * unsubscribe() from inside onAction(), ArrayList would throw
- * ConcurrentModificationException. CopyOnWriteArrayList takes a snapshot
- * of the list for each iteration, so it is safe. Our app is single-threaded
- * (JavaFX Application Thread), but the safety costs nothing here and prevents
- * future surprises.
- *
- * WHY not use JavaFX's EventBus?
- * JavaFX's event system is tightly coupled to Node/Scene. AuditService writes
- * to a file — it has nothing to do with the UI. Keeping the bus in the service
- * layer keeps the domain decoupled from the UI framework.
+ * WHY extend Singleton<ActionBus>?
+ * ActionBus and UserSession share the exact same singleton boilerplate:
+ * private static final X INSTANCE = new X(), private constructor, static get().
+ * Extending Singleton<T> documents the intent and groups them visually
+ * in the class hierarchy — a new developer sees immediately that this
+ * class is a singleton without reading the full implementation.
+ * No behaviour is added; the extends is purely architectural signal.
  */
-public final class ActionBus {
+public final class ActionBus extends Singleton<ActionBus> {
 
     private static final ActionBus INSTANCE = new ActionBus();
     private final List<ActionObserver> observers = new CopyOnWriteArrayList<>();

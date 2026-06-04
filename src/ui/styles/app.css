@@ -103,6 +103,18 @@
 }
 .ghost-btn:hover { -fx-background-color: #2a2650; }
 
+/* ── Hyperlink-style text button (forgot password, etc.) ── */
+.link-btn {
+    -fx-background-color: transparent;
+    -fx-text-fill: #8b82e8;
+    -fx-border-color: transparent;
+    -fx-padding: 2 0;
+    -fx-cursor: hand;
+    -fx-underline: true;
+    -fx-font-size: 13px;
+}
+.link-btn:hover { -fx-text-fill: #c8c3f8; }
+
 .danger-btn {
     -fx-background-color: #7a2020;
     -fx-text-fill: #fdd;
@@ -302,6 +314,33 @@
 .board-feedback     { -fx-font-size: 13px; -fx-wrap-text: true; }
 .board-feedback-ok  { -fx-text-fill: #9ed67a; }
 .board-feedback-err { -fx-text-fill: #f09595; }
+
+/* ── Whiteboard drawing toolbar ──────────────────────────────────── */
+.board-toolbar {
+    -fx-background-color: #1a1838;
+    -fx-border-color: #2e2c52;
+    -fx-border-width: 0 0 1 0;
+}
+
+/* Tool toggle buttons (Pencil / Line / Eraser) */
+.board-tool-btn {
+    -fx-background-color: #2a2650;
+    -fx-text-fill: #c8c3f8;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-border-color: #3a3870;
+    -fx-border-width: 1;
+    -fx-padding: 5 12;
+    -fx-cursor: hand;
+    -fx-font-size: 13px;
+}
+.board-tool-btn:hover    { -fx-background-color: #38347a; }
+/* JavaFX uses :selected for ToggleButton active state */
+.board-tool-btn:selected {
+    -fx-background-color: #534AB7;
+    -fx-border-color: #8b82e8;
+    -fx-text-fill: #ffffff;
+}
 
 /* ── Role badge chips (admin user table) ─────────────────────── */
 .role-teacher { -fx-background-color: #2a2650; -fx-text-fill: #c8c3f8;
@@ -668,10 +707,6 @@
     -fx-text-fill: #c8c3f8;
     -fx-wrap-text: true;
 }
-
-/* ══════════════════════════════════════════════════════════════
-   ASSIGNMENT CARDS
-   ══════════════════════════════════════════════════════════════ */
 
 .assignment-card {
     -fx-background-color: #1e1c3a;

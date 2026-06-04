@@ -143,8 +143,17 @@ public class LoginController implements Navigable {
         loginBtn.setOnAction(e -> handleLogin());
         passwordField.setOnAction(e -> handleLogin());
 
+        // ── Forgot password link ───────────────────────────────────────────────
+        // WHY a Hyperlink-styled Button instead of a real Hyperlink?
+        // JavaFX Hyperlink fires an ActionEvent like a Button, but styled
+        // differently. Using the CSS class "link-btn" lets us keep a consistent
+        // look without adding a separate Hyperlink control type.
+        Button forgotBtn = new Button("Am uitat parola");
+        forgotBtn.getStyleClass().add("link-btn");
+        forgotBtn.setOnAction(e -> showForgotPasswordDialog());
+
         form.getChildren().addAll(heading, subheading,
-                emailField, passwordField, errorLabel, loginBtn);
+                emailField, passwordField, errorLabel, loginBtn, forgotBtn);
         return form;
     }
 
@@ -276,6 +285,109 @@ public class LoginController implements Navigable {
     }
 
     private void showError(Label label, String message) {
+        label.setText(message);
+        label.setVisible(true);
+        label.setManaged(true);
+    }
+
+    /**
+     * "Forgot password" dialog.
+     *
+     * Flow:
+     *   1. User enters their registered email.
+     *   2. User enters a new password (twice, to confirm).
+     *   3. If the email exists in the DB and passwords match, Userrepository
+     *      hashes the new password via BCrypt and updates the row.
+     *
+     * WHY no email token / verification code?
+     * This is a desktop app with direct DB access — there is no mail server.
+     * A reset-by-email flow would require SMTP configuration that is out of
+     * scope. The "know your email" gate is the lightweight equivalent.
+     * When email delivery is added, replace this dialog with a token flow.
+     */
+    private void showForgotPasswordDialog() {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Recuperare parola");
+        dialog.setHeaderText("Seteaza o noua parola");
+
+        ButtonType resetType = new ButtonType("Reseteaza parola", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(resetType, ButtonType.CANCEL);
+
+        GridPane grid = new GridPane();
+        grid.setHgap(12);
+        grid.setVgap(14);
+        grid.setPadding(new Insets(20));
+
+        TextField      emailF    = new TextField();
+        emailF.setPromptText("Emailul contului tau");
+        PasswordField  pass1F    = new PasswordField();
+        pass1F.setPromptText("Parola noua (min 10 car., ! sau @)");
+        PasswordField  pass2F    = new PasswordField();
+        pass2F.setPromptText("Confirma parola noua");
+
+        Label errorLbl = new Label();
+        errorLbl.getStyleClass().add("error-label");
+        errorLbl.setVisible(false);
+        errorLbl.setManaged(false);
+        errorLbl.setWrapText(true);
+        errorLbl.setMaxWidth(340);
+
+        grid.add(new Label("Email:"),           0, 0); grid.add(emailF,   1, 0);
+        grid.add(new Label("Parola noua:"),     0, 1); grid.add(pass1F,   1, 1);
+        grid.add(new Label("Confirma parola:"), 0, 2); grid.add(pass2F,   1, 2);
+        grid.add(errorLbl,                      1, 3);
+
+        GridPane.setHgrow(emailF,  Priority.ALWAYS);
+        GridPane.setHgrow(pass1F,  Priority.ALWAYS);
+        GridPane.setHgrow(pass2F,  Priority.ALWAYS);
+
+        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().setPrefWidth(440);
+
+        // Disable the reset button until email + both passwords are non-blank.
+        javafx.scene.control.ButtonBar.ButtonData okData = resetType.getButtonData();
+        dialog.getDialogPane().lookupButton(resetType).setDisable(true);
+        Runnable checkFields = () -> {
+            boolean ready = !emailF.getText().isBlank()
+                    && !pass1F.getText().isBlank()
+                    && !pass2F.getText().isBlank();
+            dialog.getDialogPane().lookupButton(resetType).setDisable(!ready);
+        };
+        emailF.textProperty().addListener((o, a, b) -> checkFields.run());
+        pass1F.textProperty().addListener((o, a, b) -> checkFields.run());
+        pass2F.textProperty().addListener((o, a, b) -> checkFields.run());
+
+        dialog.showAndWait().ifPresent(btn -> {
+            if (btn != resetType) return;
+
+            String email = emailF.getText().trim().toLowerCase();
+            String p1    = pass1F.getText();
+            String p2    = pass2F.getText();
+
+            if (!p1.equals(p2)) {
+                showErrorInDialog(errorLbl, "Parolele nu coincid.");
+                return;
+            }
+
+            try {
+                boolean updated = Userrepository.updatePassword(email, p1);
+                if (!updated) {
+                    showErrorInDialog(errorLbl, "Nu exista niciun cont cu acest email.");
+                    return;
+                }
+                ActionBus.get().publish(Auditaction.USER_PASSWORD_RESET, email);
+                new Alert(Alert.AlertType.INFORMATION,
+                        "Parola a fost resetata. Te poti autentifica acum.",
+                        ButtonType.OK).showAndWait();
+            } catch (IllegalArgumentException ex) {
+                showErrorInDialog(errorLbl, ex.getMessage());
+            } catch (RuntimeException ex) {
+                showErrorInDialog(errorLbl, "Eroare: " + ex.getMessage());
+            }
+        });
+    }
+
+    private void showErrorInDialog(Label label, String message) {
         label.setText(message);
         label.setVisible(true);
         label.setManaged(true);

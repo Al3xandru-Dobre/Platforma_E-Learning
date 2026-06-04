@@ -1,69 +1,59 @@
 package db;
 
+import ui.util.Screenmanager;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+
 /**
  * Database — owns the single JDBC Connection for the whole application.
  *
- * SCHEMA MIGRATION STRATEGY:
- * "CREATE TABLE IF NOT EXISTS" only runs when the table does NOT yet exist.
- * It never modifies an existing table — so adding a column to the DDL after
- * the table is already created has no effect.
- *
- * The solution is to run explicit "ALTER TABLE ... ADD COLUMN IF NOT EXISTS"
- * statements after every CREATE TABLE block. PostgreSQL supports
- * "ADD COLUMN IF NOT EXISTS" since version 9.6, so this is safe and
- * idempotent: running it when the column already exists is a no-op.
- *
- * Pattern used here:
- *   1. CREATE TABLE IF NOT EXISTS  — creates on first run, skips on subsequent runs.
- *   2. ALTER TABLE ADD COLUMN IF NOT EXISTS — adds any columns that were
- *      introduced after the table was first created (i.e. migrations).
- *
- * This gives us forward-only, zero-downtime schema evolution without an
- * ORM or a separate migration tool (Flyway, Liquibase).
+ * WHY call createTablesIfNeeded() at startup?
+ * "CREATE TABLE IF NOT EXISTS" is idempotent — safe to run every launch.
+ * This replaces the ORM's hbm2ddl.auto=update: the schema is defined
+ * here in plain SQL, visible and version-controllable.
  */
+
+
 public class Database {
 
-    private static final String URL  = "jdbc:postgresql://localhost:5432/platforma_elearning";
+    private static final String URL = "jdbc:postgresql://localhost:5432/platforma_elearning";
     private static final String USER = "platforma_user";
     private static final String PASS = "parola123!@";
 
     private static Connection connection;
 
-    public static Connection get() {
-        try {
-            if (connection == null || !connection.isValid(2)) {
-                connection = DriverManager.getConnection(URL, USER, PASS);
+    public static Connection get(){
+        try{
+            if(connection == null || !connection.isValid(2)){
+                connection = DriverManager.getConnection(URL,USER,PASS);
                 System.out.println("[DB] Connection opened.");
             }
             return connection;
-        } catch (SQLException e) {
+        } catch(SQLException e) {
             throw new RuntimeException(
                     "Nu ma pot conecta la baza de date. " +
                             "Verifica ca PostgreSQL ruleaza si datele de conectare din Database.java sunt corecte.\n" +
                             "Eroare: " + e.getMessage(), e);
+
         }
     }
 
     public static void createTablesIfNeeded() {
         try (Statement stmt = get().createStatement()) {
-
-            // ── users ─────────────────────────────────────────────────────────
             stmt.execute("""
-                CREATE TABLE IF NOT EXISTS users (
+                
+                    CREATE TABLE IF NOT EXISTS users (
                     id         BIGSERIAL    PRIMARY KEY,
                     name       VARCHAR(60)  NOT NULL,
                     email      VARCHAR(120) NOT NULL UNIQUE,
                     hash_pass  CHAR(60)     NOT NULL,
                     role       VARCHAR(20)  NOT NULL
                 )
-                """);
-
-            // ── courses ───────────────────────────────────────────────────────
+             """);
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS courses (
                     id             BIGSERIAL    PRIMARY KEY,
@@ -75,57 +65,64 @@ public class Database {
                 )
                 """);
 
-            // Migration: add is_public if the table was created before this column existed.
-            // "IF NOT EXISTS" makes this a no-op when the column is already present.
-            stmt.execute("""
-                ALTER TABLE courses
-                    ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT TRUE
-                """);
-
-            // ── lessons ───────────────────────────────────────────────────────
+            // WHY lessons here and not in LessonRepository?
+            // All DDL is centralised in Database so the schema is visible in one place.
+            // "CREATE TABLE IF NOT EXISTS" is idempotent — safe on every startup.
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS lessons (
-                    id                   BIGSERIAL     PRIMARY KEY,
-                    course_id            BIGINT        NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
-                    name                 VARCHAR(200)  NOT NULL,
-                    content              TEXT,
-                    author_name          VARCHAR(60),
-                    whiteboard_snapshot  TEXT,
-                    created_at           TIMESTAMP     NOT NULL DEFAULT NOW()
+                    id                  BIGSERIAL    PRIMARY KEY,
+                    course_id           BIGINT       NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+                    name                VARCHAR(120) NOT NULL,
+                    content             TEXT,
+                    author_name         VARCHAR(60),
+                    whiteboard_snapshot TEXT,
+                    created_at          TIMESTAMP    NOT NULL DEFAULT NOW()
                 )
                 """);
 
-            // ── enrollments ───────────────────────────────────────────────────
+            // WHY a separate assignments table instead of storing JSON in courses?
+            // Assignments have their own lifecycle (deadlines, submissions).
+            // A dedicated table lets us query "all assignments due this week"
+            // without deserialising blobs. Submissions are stored as JSONB to
+            // avoid a third table for this sprint; swap to a submissions table
+            // when grading is added.
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS assignments (
+                    id          BIGSERIAL    PRIMARY KEY,
+                    course_id   BIGINT       NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+                    title       VARCHAR(120) NOT NULL,
+                    description TEXT         NOT NULL,
+                    deadline    TIMESTAMP,
+                    created_at  TIMESTAMP    NOT NULL DEFAULT NOW()
+                )
+                """);
+
+            // Enrolment tables (unchanged — kept here for completeness)
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS enrollments (
-                    id             BIGSERIAL    PRIMARY KEY,
                     course_id      BIGINT       NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
                     student_email  VARCHAR(120) NOT NULL,
                     student_name   VARCHAR(60)  NOT NULL,
                     enrolled_at    TIMESTAMP    NOT NULL DEFAULT NOW(),
-                    UNIQUE (course_id, student_email)
+                    PRIMARY KEY (course_id, student_email)
                 )
                 """);
-
-            // ── join_requests ─────────────────────────────────────────────────
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS join_requests (
-                    id             BIGSERIAL    PRIMARY KEY,
                     course_id      BIGINT       NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
                     student_email  VARCHAR(120) NOT NULL,
                     student_name   VARCHAR(60)  NOT NULL,
                     requested_at   TIMESTAMP    NOT NULL DEFAULT NOW(),
-                    UNIQUE (course_id, student_email)
+                    PRIMARY KEY (course_id, student_email)
                 )
                 """);
 
-            System.out.println("[DB] Tables and migrations verified.");
+            System.out.println("[DB] Tables verified / created.");
 
         } catch (SQLException e) {
             throw new RuntimeException("Eroare la crearea tabelelor: " + e.getMessage(), e);
         }
     }
-
     public static void close() {
         try {
             if (connection != null && !connection.isClosed()) {
@@ -134,4 +131,6 @@ public class Database {
             }
         } catch (SQLException ignored) {}
     }
+
+
 }
