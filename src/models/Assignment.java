@@ -11,16 +11,20 @@ import java.util.*;
  *   - Holds the title, description, and optional deadline.
  *   - Tracks which students submitted and what they wrote.
  *
- * WHY a Map<String, String> for submissions instead of a richer object?
- * The key is the student's email (unique, stable) and the value is their
- * submission text. For a future sprint you would replace the String value
- * with a Submission record (text + timestamp + grade), but keeping it simple
- * now avoids over-engineering before the requirement exists.
+ * WHY a Map<String, Submission>?
+ * The key is the student's email (unique, stable). The value used to be the bare
+ * answer text; it is now a Submission object carrying text + timestamp + late flag
+ * + grade + feedback. The map still gives O(1) "has this student submitted?" and
+ * O(1) lookup of a student's work for grading — the Submission just holds more.
  *
- * WHY no id field?
- * Assignments are in-memory for this sprint — they live inside Course.
- * When persistence is added, a BIGSERIAL id will be introduced alongside
- * a CourseAssignmentRepository, exactly as Course/CourseRepository are separated.
+ * WHY does the deadline / lateness rule live HERE and not in Submission?
+ * The Assignment owns the deadline, so the Assignment is the only object that can
+ * decide whether a given submission is late. It computes the late flag at submit()
+ * time and hands it to the Submission, which then freezes it forever.
+ *
+ * WHY an id field?
+ * Assignments are persisted in the assignments table.
+ * The id is 0 until assigned by the DB after INSERT — same convention as Lesson.
  */
 public class Assignment {
 
@@ -38,8 +42,8 @@ public class Assignment {
     private final LocalDateTime createdAt;
     private final LocalDateTime deadline;      // null means no deadline
 
-    // email → submission text
-    private final Map<String, String> submissions = new LinkedHashMap<>();
+    // email → submission
+    private final Map<String, Submission> submissions = new LinkedHashMap<>();
 
     public Assignment(String title, String description, LocalDateTime deadline) {
         if (title == null || title.isBlank())
@@ -52,17 +56,56 @@ public class Assignment {
         this.deadline    = deadline;
     }
 
-    /** Called when a Student submits their work. */
-    public void submit(String studentEmail, String submissionText) {
+    /**
+     * Record a student's submission.
+     *
+     * Lateness is decided HERE because the Assignment owns the deadline.
+     * Rule (per product decision): a late submission is ALLOWED but flagged —
+     * we never block it, we just mark late=true so the teacher can see it.
+     * No deadline ⇒ never late.
+     *
+     * Returns the created Submission so the caller (controller) can immediately
+     * persist it via SubmissionRepository and read back its DB id.
+     */
+    public Submission submit(String studentEmail, String submissionText) {
         if (studentEmail == null || studentEmail.isBlank())
             throw new IllegalArgumentException("Email-ul studentului nu poate fi gol.");
         if (submissionText == null || submissionText.isBlank())
             throw new IllegalArgumentException("Rezolvarea nu poate fi goala.");
-        submissions.put(studentEmail.toLowerCase(), submissionText.strip());
+
+        boolean late = deadline != null && LocalDateTime.now().isAfter(deadline);
+        Submission s = new Submission(studentEmail, submissionText, late);
+        submissions.put(studentEmail.toLowerCase(), s);
+        return s;
+    }
+
+    /**
+     * Re-attach a Submission loaded from the database (grade/feedback intact).
+     * WHY separate from submit()? submit() is the "new work" path that stamps
+     * the time and computes lateness now; this is the "rehydrate stored work"
+     * path that must NOT recompute anything. Mixing them would re-timestamp
+     * old submissions on every load — the same class of bug as recomputing late.
+     */
+    public void attachSubmission(Submission submission) {
+        if (submission == null) throw new IllegalArgumentException("Rezolvarea nu poate fi null.");
+        submissions.put(submission.getStudentEmail().toLowerCase(), submission);
+    }
+
+    /** Grade one student's submission. Throws if that student never submitted. */
+    public void grade(String studentEmail, double grade, String feedback) {
+        Submission s = submissions.get(studentEmail.toLowerCase());
+        if (s == null)
+            throw new IllegalArgumentException("Studentul nu a trimis nicio rezolvare la aceasta tema.");
+        s.grade(grade, feedback);
     }
 
     public boolean hasSubmitted(String studentEmail) {
         return submissions.containsKey(studentEmail.toLowerCase());
+    }
+
+    /** The given student's submission, or empty if they have not submitted. */
+    public Optional<Submission> submissionOf(String studentEmail) {
+        return Optional.ofNullable(submissions.get(studentEmail.toLowerCase()));
     }
 
     // ── Getters ───────────────────────────────────────────────────────────────
@@ -79,7 +122,7 @@ public class Assignment {
     }
 
     /** Unmodifiable view — callers can read but not mutate the map. */
-    public Map<String, String> getSubmissions() {
+    public Map<String, Submission> getSubmissions() {
         return Collections.unmodifiableMap(submissions);
     }
 }

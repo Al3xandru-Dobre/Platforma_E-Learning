@@ -7,6 +7,7 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import models.*;
 import repository.AssignmentRepository;
+import repository.SubmissionRepository;
 import repository.LessonRepository;
 import service.WhiteBoard;
 import ui.controllers.WhiteBoardController;
@@ -121,7 +122,15 @@ public class CourseroomController {
 
         course.clearAssignments();
         AssignmentRepository.findByCourse(course.getId())
-                .forEach(course::addAssignment);
+                .forEach(a -> {
+                    // For each assignment, re-attach its persisted submissions so
+                    // students see their grade/feedback and teachers see all work.
+                    // attachSubmission (not submit) is used: stored submissions
+                    // must keep their original timestamp and late flag, never recompute.
+                    SubmissionRepository.findByAssignment(a.getId())
+                            .forEach(a::attachSubmission);
+                    course.addAssignment(a);
+                });
     }
 
     // ── Header ────────────────────────────────────────────────────────────────
@@ -628,35 +637,78 @@ public class CourseroomController {
 
         // Student submission area
         if (!isTeacher) {
-            boolean submitted = assignment.hasSubmitted(currentUserEmail);
-            if (submitted) {
-                Label done = new Label("✅ Ai trimis rezolvarea.");
-                done.getStyleClass().add("assignment-submitted");
-                card.getChildren().add(done);
-            } else {
-                TextArea submitArea = new TextArea();
-                submitArea.setPromptText("Scrie rezolvarea ta...");
-                submitArea.setPrefRowCount(4);
-                submitArea.setWrapText(true);
-                submitArea.getStyleClass().add("board-textarea");
+            assignment.submissionOf(currentUserEmail).ifPresentOrElse(
+                    mine -> {
+                        String late = mine.isLate() ? "  (intarziat)" : "";
+                        Label done = new Label("✅ Ai trimis rezolvarea." + late);
+                        done.getStyleClass().add("assignment-submitted");
+                        card.getChildren().add(done);
 
-                Button submitBtn = new Button("Trimite rezolvarea");
-                submitBtn.getStyleClass().add("primary-btn");
-                submitBtn.setOnAction(e -> {
-                    String text = submitArea.getText().trim();
-                    if (text.isBlank()) return;
-                    assignment.submit(currentUserEmail, text);
-                    renderAssignments(assignmentsListPane);
-                });
+                        // Show the grade + feedback once the teacher has graded it.
+                        if (mine.isGraded()) {
+                            String verdict = mine.isPassed() ? "promovat" : "nepromovat";
+                            Label gradeLbl = new Label(
+                                    String.format("📊 Nota: %.1f / 10  (%s)", mine.getGrade(), verdict));
+                            gradeLbl.getStyleClass().add("content-sub");
+                            card.getChildren().add(gradeLbl);
+                            mine.getFeedback().ifPresent(fb -> {
+                                Label fbLbl = new Label("💬 " + fb);
+                                fbLbl.setWrapText(true);
+                                fbLbl.getStyleClass().add("lesson-content-text");
+                                card.getChildren().add(fbLbl);
+                            });
+                        } else {
+                            Label pending = new Label("⏳ In asteptarea notarii.");
+                            pending.getStyleClass().add("content-sub");
+                            card.getChildren().add(pending);
+                        }
+                    },
+                    () -> {
+                        TextArea submitArea = new TextArea();
+                        submitArea.setPromptText("Scrie rezolvarea ta...");
+                        submitArea.setPrefRowCount(4);
+                        submitArea.setWrapText(true);
+                        submitArea.getStyleClass().add("board-textarea");
 
-                card.getChildren().addAll(submitArea, submitBtn);
-            }
+                        Button submitBtn = new Button("Trimite rezolvarea");
+                        submitBtn.getStyleClass().add("primary-btn");
+                        submitBtn.setOnAction(e -> {
+                            String text = submitArea.getText().trim();
+                            if (text.isBlank()) return;
+                            // submit() builds the Submission and computes lateness;
+                            // we then persist it so it survives restart and the teacher sees it.
+                            Submission s = assignment.submit(currentUserEmail, text);
+                            if (assignment.getId() != 0L) {
+                                SubmissionRepository.save(assignment.getId(), s);
+                            }
+                            renderAssignments(assignmentsListPane);
+                        });
+
+                        card.getChildren().addAll(submitArea, submitBtn);
+                    });
         } else {
-            // Teacher sees the submission count
-            int count = assignment.getSubmissions().size();
-            Label subCount = new Label("📥 " + count + " rezolvare(i) primite");
-            subCount.getStyleClass().add("content-sub");
-            card.getChildren().add(subCount);
+            // Teacher sees every submission with its status and a Grade button.
+            var subs = assignment.getSubmissions().values();
+            Label header = new Label("📥 " + subs.size() + " rezolvare(i) primite");
+            header.getStyleClass().add("content-sub");
+            card.getChildren().add(header);
+
+            for (Submission s : subs) {
+                String status = !s.isGraded()
+                        ? "nenotat"
+                        : String.format("%.1f/10", s.getGrade());
+                String late = s.isLate() ? " ⚠ intarziat" : "";
+                Label row = new Label("• " + s.getStudentEmail() + " — " + status + late);
+                row.getStyleClass().add("lesson-content-text");
+
+                Button gradeBtn = new Button(s.isGraded() ? "Re-noteaza" : "Noteaza");
+                gradeBtn.getStyleClass().add("primary-btn");
+                gradeBtn.setOnAction(e -> showGradeDialog(assignment, s));
+
+                HBox subRow = new HBox(12, row, gradeBtn);
+                subRow.setAlignment(Pos.CENTER_LEFT);
+                card.getChildren().add(subRow);
+            }
         }
 
         return card;
@@ -726,6 +778,88 @@ public class CourseroomController {
 
             course.addAssignment(a);
             renderAssignments(assignmentsListPane);
+        });
+    }
+
+    /**
+     * Teacher-only dialog to grade one submission.
+     *
+     * WHY show the submission text read-only here?
+     * The teacher needs to see what they are grading without leaving the dialog.
+     * The TextArea is disabled so it cannot be edited — grading must never alter
+     * a student's submitted answer.
+     *
+     * Validation (0..10) is delegated to Submission.grade(); the dialog only
+     * parses the number and surfaces the error message. This keeps the rule in
+     * one place (the domain) instead of duplicating it in the UI.
+     */
+    private void showGradeDialog(Assignment assignment, Submission submission) {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Noteaza rezolvarea");
+        dialog.setHeaderText(submission.getStudentEmail()
+                + (submission.isLate() ? "  (trimis cu intarziere)" : ""));
+
+        ButtonType saveType = new ButtonType("Salveaza nota", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(saveType, ButtonType.CANCEL);
+
+        GridPane grid = new GridPane();
+        grid.setHgap(12); grid.setVgap(12); grid.setPadding(new Insets(16));
+
+        TextArea answer = new TextArea(submission.getText());
+        answer.setEditable(false);
+        answer.setWrapText(true);
+        answer.setPrefRowCount(6);
+        answer.getStyleClass().add("board-textarea");
+
+        TextField gradeField = new TextField(
+                submission.isGraded() ? String.valueOf(submission.getGrade()) : "");
+        gradeField.setPromptText("Nota 0–10");
+
+        TextArea feedbackArea = new TextArea(submission.getFeedback().orElse(""));
+        feedbackArea.setPromptText("Feedback (optional)...");
+        feedbackArea.setPrefRowCount(3);
+        feedbackArea.setWrapText(true);
+
+        grid.add(new Label("Rezolvare:"), 0, 0); grid.add(answer,       1, 0);
+        grid.add(new Label("Nota:"),       0, 1); grid.add(gradeField,   1, 1);
+        grid.add(new Label("Feedback:"),   0, 2); grid.add(feedbackArea, 1, 2);
+        GridPane.setHgrow(answer,       Priority.ALWAYS);
+        GridPane.setHgrow(gradeField,   Priority.ALWAYS);
+        GridPane.setHgrow(feedbackArea, Priority.ALWAYS);
+
+        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().setPrefWidth(520);
+
+        dialog.showAndWait().ifPresent(btn -> {
+            if (btn != saveType) return;
+
+            // Parse FIRST — assign to a final-like local so the compiler
+            // knows it is definitely initialised before the second try block.
+            // Declaring inside the try and using outside is what caused the
+            // "variable might not have been initialized" compile error.
+            final String rawGrade = gradeField.getText().trim().replace(',', '.');
+            double parsedGrade;
+            try {
+                parsedGrade = Double.parseDouble(rawGrade);
+            } catch (NumberFormatException ex) {
+                new Alert(Alert.AlertType.ERROR, "Nota trebuie sa fie un numar.").showAndWait();
+                return;
+            }
+            final double grade = parsedGrade;   // effectively final — safe to use in catch
+
+            try {
+                // Domain validates the 0..10 range and stores grade + feedback.
+                assignment.grade(submission.getStudentEmail(), grade, feedbackArea.getText());
+                // Only persist if this submission was actually saved to DB.
+                // id == 0 means the assignment itself was transient (getId() == 0L)
+                // so no row exists to update — grade lives in memory only for this session.
+                if (submission.getId() != 0L) {
+                    SubmissionRepository.updateGrade(submission);
+                }
+                renderAssignments(assignmentsListPane);
+            } catch (IllegalArgumentException ex) {
+                new Alert(Alert.AlertType.ERROR, ex.getMessage()).showAndWait();
+            }
         });
     }
 }

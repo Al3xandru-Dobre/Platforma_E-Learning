@@ -97,6 +97,21 @@ public class Database {
                 )
                 """);
 
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS submissions (
+                    id             BIGSERIAL     PRIMARY KEY,
+                    assignment_id  BIGINT        NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
+                    student_email  VARCHAR(120)  NOT NULL,
+                    text           TEXT          NOT NULL,
+                    submitted_at   TIMESTAMP     NOT NULL DEFAULT NOW(),
+                    is_late        BOOLEAN       NOT NULL DEFAULT FALSE,
+                    grade          DOUBLE PRECISION NOT NULL DEFAULT -1,
+                    feedback       TEXT,
+                    UNIQUE (assignment_id, student_email)
+                )
+                """);
+
+
             // Enrolment tables (unchanged — kept here for completeness)
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS enrollments (

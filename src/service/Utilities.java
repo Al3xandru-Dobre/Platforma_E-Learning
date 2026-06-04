@@ -29,7 +29,8 @@ public interface Utilities
         return input;
     }
 
-    static void checkString(String stringToCheck) {
+    static boolean checkString(String stringToCheck) {
         if(stringToCheck == null || stringToCheck.isBlank()) throw new InvalidString("Ai introdus nimic ;D");
+        return false;
     }
 }
