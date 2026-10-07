@@ -63,7 +63,7 @@ public class SubmissionRepository {
     }
 
     public static void updateGrade( Submission s) {
-        String sql = "UPDATE submissions SET grade = ?, feedback = ?, WHERE id = ?";
+        String sql = "UPDATE submissions SET grade = ?, feedback = ? WHERE id = ?";
         try (PreparedStatement ps = Database.get().prepareStatement(sql)) {
             ps.setDouble(1, s.getGrade());
             if (s.getFeedback().isPresent()) ps.setString(2, s.getFeedback().get());

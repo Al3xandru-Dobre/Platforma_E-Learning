@@ -12,6 +12,7 @@ import models.Teacher;
 import repository.Userrepository;
 import service.ActionBus;
 import service.Auditaction;
+import ui.util.AsyncDb;
 import ui.util.Navigable;
 import ui.util.Screenmanager;
 import ui.util.UserSession;
@@ -225,18 +226,23 @@ public class LoginController implements Navigable {
             return;
         }
 
-        Optional<User> found = Userrepository.findByEmail(email);
+        // DB lookup on a background thread — BCrypt + JDBC would freeze the UI
+        AsyncDb.call(
+                () -> Userrepository.findByEmail(email),
+                found -> {
+                    if (found.isEmpty() || !found.get().checkPasssword(pass)) {
+                        showError(errorLabel, "Email sau parola incorecta.");
+                        return;
+                    }
 
-        if (found.isEmpty() || !found.get().checkPasssword(pass)) {
-            showError(errorLabel, "Email sau parola incorecta.");
-            return;
-        }
+                    // Store in session → DashboardRouter reads role and picks the right screen
+                    UserSession.get().login(found.get());
+                    ActionBus.get().publish(Auditaction.USER_LOGIN, found.get().getEmail());
 
-        // Store in session → DashboardRouter reads role and picks the right screen
-        UserSession.get().login(found.get());
-        ActionBus.get().publish(Auditaction.USER_LOGIN, found.get().getEmail());
-
-        Screenmanager.get().navigateTo(new DashboardRouter());
+                    Screenmanager.get().navigateTo(new DashboardRouter());
+                },
+                err -> showError(errorLabel,
+                        "Eroare la autentificare: " + err.getMessage()));
     }
 
     private void handleRegister() {
@@ -252,36 +258,32 @@ public class LoginController implements Navigable {
         RadioButton selected = (RadioButton) roleToggle.getSelectedToggle();
         boolean isTeacher = selected.getText().equals("Profesor");
 
-        try {
-            // Step 1: build domain object — validates name + password rules.
-            // If validation fails, IllegalArgumentException is thrown and caught
-            // below; the DB is never touched.
-            User newUser = isTeacher
-                    ? new Teacher(name, pass, email, null)
-                    : new Student(name, pass, email);
+        // Build the domain object + hash (BCrypt ~300ms) and persist on a
+        // background thread — none of it should run on the FX thread.
+        AsyncDb.call(
+                () -> {
+                    // Step 1: build domain object — validates name + password
+                    // rules. If validation fails, IllegalArgumentException is
+                    // thrown; the DB is never touched.
+                    User newUser = isTeacher
+                            ? new Teacher(name, pass, email, null)
+                            : new Student(name, pass, email);
 
-            // Step 2: persist. save() reads the real BCrypt hash via getHashPass()
-            // internally — the caller never touches the hash string directly.
-            Userrepository.save(newUser);
+                    // Step 2: persist. save() reads the real BCrypt hash via
+                    // getHashPass() — the caller never touches the hash string.
+                    Userrepository.save(newUser);
+                    return newUser;
+                },
+                newUser -> {
+                    // Step 3: log in and route to the correct dashboard.
+                    // DashboardRouter handles the switch — no extra logic here.
+                    ActionBus.get().publish(Auditaction.USER_REGISTER, email,
+                            newUser.getRole() + ": " + name);
 
-            // Step 3: log in and route to the correct dashboard immediately.
-            // A new Teacher goes to TeacherDashboardController.
-            // A new Student goes to StudentDashboardController.
-            // DashboardRouter handles the switch — no extra logic needed here.
-
-            ActionBus.get().publish(Auditaction.USER_REGISTER, email,
-                    newUser.getRole() + ": " + name);
-
-            UserSession.get().login(newUser);
-            Screenmanager.get().navigateTo(new DashboardRouter());
-
-        } catch (IllegalArgumentException ex) {
-            // Validation errors from User (name, password rules)
-            showError(regErrorLabel, ex.getMessage());
-        } catch (RuntimeException ex) {
-            // DB errors (duplicate email, connection failure)
-            showError(regErrorLabel, ex.getMessage());
-        }
+                    UserSession.get().login(newUser);
+                    Screenmanager.get().navigateTo(new DashboardRouter());
+                },
+                err -> showError(regErrorLabel, err.getMessage()));
     }
 
     private void showError(Label label, String message) {
@@ -369,21 +371,19 @@ public class LoginController implements Navigable {
                 return;
             }
 
-            try {
-                boolean updated = Userrepository.updatePassword(email, p1);
-                if (!updated) {
-                    showErrorInDialog(errorLbl, "Nu exista niciun cont cu acest email.");
-                    return;
-                }
-                ActionBus.get().publish(Auditaction.USER_PASSWORD_RESET, email);
-                new Alert(Alert.AlertType.INFORMATION,
-                        "Parola a fost resetata. Te poti autentifica acum.",
-                        ButtonType.OK).showAndWait();
-            } catch (IllegalArgumentException ex) {
-                showErrorInDialog(errorLbl, ex.getMessage());
-            } catch (RuntimeException ex) {
-                showErrorInDialog(errorLbl, "Eroare: " + ex.getMessage());
-            }
+            AsyncDb.call(
+                    () -> Userrepository.updatePassword(email, p1),
+                    updated -> {
+                        if (!updated) {
+                            showErrorInDialog(errorLbl, "Nu exista niciun cont cu acest email.");
+                            return;
+                        }
+                        ActionBus.get().publish(Auditaction.USER_PASSWORD_RESET, email);
+                        new Alert(Alert.AlertType.INFORMATION,
+                                "Parola a fost resetata. Te poti autentifica acum.",
+                                ButtonType.OK).showAndWait();
+                    },
+                    err -> showErrorInDialog(errorLbl, "Eroare: " + err.getMessage()));
         });
     }
 

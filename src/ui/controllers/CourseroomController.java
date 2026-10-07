@@ -11,6 +11,7 @@ import repository.SubmissionRepository;
 import repository.LessonRepository;
 import service.WhiteBoard;
 import ui.controllers.WhiteBoardController;
+import ui.util.AsyncDb;
 import ui.util.UserSession;
 
 import java.time.LocalDateTime;
@@ -87,16 +88,27 @@ public class CourseroomController {
         BorderPane root = new BorderPane();
         root.getStyleClass().add("content-area");
 
+        root.setTop(buildHeader());
+
         // ── Hydrate from DB ──────────────────────────────────────────────────
         // WHY here and not in the constructor?
         // buildRoot() is called exactly once per CourseRoomController instance,
         // right before the scene is shown. Loading in the constructor would run
         // DB queries even if the controller is never displayed (e.g. in tests).
-        // Loading here keeps construction cheap and IO predictable.
-        hydrateCourseFromDb();
+        // The queries run on a background thread so the UI doesn't freeze;
+        // the tab area is built once hydration finishes.
+        StackPane loadingPane = new StackPane(new ProgressIndicator());
+        root.setCenter(loadingPane);
 
-        root.setTop(buildHeader());
-        root.setCenter(buildTabArea());
+        AsyncDb.run(
+                this::hydrateCourseFromDb,
+                () -> root.setCenter(buildTabArea()),
+                err -> {
+                    Label errLbl = new Label("Nu s-a putut incarca continutul cursului: "
+                            + err.getMessage());
+                    errLbl.getStyleClass().add("error-label");
+                    loadingPane.getChildren().setAll(errLbl);
+                });
 
         return root;
     }
@@ -322,16 +334,24 @@ public class CourseroomController {
                 Lesson lesson = new Lesson(name);
                 lesson.setContent(content.isBlank() ? null : content);
 
-                // Persist to DB — this is what was missing before.
-                // Without this call, lessons only lived in memory and vanished
-                // when the course room was closed.
+                // Persist to DB on a background thread — this is what was
+                // missing before. Without this call, lessons only lived in
+                // memory and vanished when the course room was closed.
                 if (course.getId() != 0L) {
-                    long lessonId = LessonRepository.save(course.getId(), lesson);
-                    lesson.setId(lessonId);
+                    AsyncDb.call(
+                            () -> LessonRepository.save(course.getId(), lesson),
+                            lessonId -> {
+                                lesson.setId(lessonId);
+                                course.addLesson(lesson);
+                                refreshLessonList(listContainer);
+                            },
+                            err -> new Alert(Alert.AlertType.ERROR,
+                                    "Nu s-a putut salva lectia: " + err.getMessage(),
+                                    ButtonType.OK).showAndWait());
+                } else {
+                    course.addLesson(lesson);
+                    refreshLessonList(listContainer);
                 }
-
-                course.addLesson(lesson);
-                refreshLessonList(listContainer);
             }
         });
     }
@@ -453,23 +473,34 @@ public class CourseroomController {
             saveBtn.getStyleClass().add("primary-btn");
             saveBtn.setOnAction(e -> {
                 List<String> lines = whiteBoard.toSnapshotLines();
-                LessonRepository.saveSnapshot(lesson.getId(), lines);
-                lesson.saveWhiteboardSnapshot(lines);
-                // Refresh the snapshot view inline
-                section.getChildren().removeIf(n -> n instanceof ListView<?>);
-                if (!lines.isEmpty()) {
-                    ListView<String> updated = new ListView<>();
-                    updated.getItems().addAll(lines);
-                    updated.setPrefHeight(Math.min(lines.size() * 28.0 + 20, 200));
-                    updated.getStyleClass().add("board-list");
-                    updated.setEditable(false);
-                    section.getChildren().add(1, updated);
-                }
-                // Update the heading label (index 0 in children)
-                section.getChildren().removeIf(n ->
-                        n instanceof Label l && l.getText().startsWith("Nicio tabla"));
-                new Alert(Alert.AlertType.INFORMATION,
-                        "Tabla a fost salvata la lectie.", ButtonType.OK).showAndWait();
+                saveBtn.setDisable(true);
+                AsyncDb.run(
+                        () -> LessonRepository.saveSnapshot(lesson.getId(), lines),
+                        () -> {
+                            saveBtn.setDisable(false);
+                            lesson.saveWhiteboardSnapshot(lines);
+                            // Refresh the snapshot view inline
+                            section.getChildren().removeIf(n -> n instanceof ListView<?>);
+                            if (!lines.isEmpty()) {
+                                ListView<String> updated = new ListView<>();
+                                updated.getItems().addAll(lines);
+                                updated.setPrefHeight(Math.min(lines.size() * 28.0 + 20, 200));
+                                updated.getStyleClass().add("board-list");
+                                updated.setEditable(false);
+                                section.getChildren().add(1, updated);
+                            }
+                            // Update the heading label (index 0 in children)
+                            section.getChildren().removeIf(n ->
+                                    n instanceof Label l && l.getText().startsWith("Nicio tabla"));
+                            new Alert(Alert.AlertType.INFORMATION,
+                                    "Tabla a fost salvata la lectie.", ButtonType.OK).showAndWait();
+                        },
+                        err -> {
+                            saveBtn.setDisable(false);
+                            new Alert(Alert.AlertType.ERROR,
+                                    "Nu s-a putut salva tabla: " + err.getMessage(),
+                                    ButtonType.OK).showAndWait();
+                        });
             });
             section.getChildren().add(saveBtn);
         }
@@ -679,9 +710,20 @@ public class CourseroomController {
                             // we then persist it so it survives restart and the teacher sees it.
                             Submission s = assignment.submit(currentUserEmail, text);
                             if (assignment.getId() != 0L) {
-                                SubmissionRepository.save(assignment.getId(), s);
+                                submitBtn.setDisable(true);
+                                AsyncDb.run(
+                                        () -> SubmissionRepository.save(assignment.getId(), s),
+                                        () -> renderAssignments(assignmentsListPane),
+                                        err -> {
+                                            submitBtn.setDisable(false);
+                                            new Alert(Alert.AlertType.ERROR,
+                                                    "Nu s-a putut trimite rezolvarea: "
+                                                            + err.getMessage(),
+                                                    ButtonType.OK).showAndWait();
+                                        });
+                            } else {
+                                renderAssignments(assignmentsListPane);
                             }
-                            renderAssignments(assignmentsListPane);
                         });
 
                         card.getChildren().addAll(submitArea, submitBtn);
@@ -773,11 +815,19 @@ public class CourseroomController {
             //         all persisted assignments — including ones the teacher
             //         created in a previous session.
             if (course.getId() != 0L) {
-                AssignmentRepository.save(course.getId(), a);
+                AsyncDb.run(
+                        () -> AssignmentRepository.save(course.getId(), a),
+                        () -> {
+                            course.addAssignment(a);
+                            renderAssignments(assignmentsListPane);
+                        },
+                        err -> new Alert(Alert.AlertType.ERROR,
+                                "Nu s-a putut salva tema: " + err.getMessage(),
+                                ButtonType.OK).showAndWait());
+            } else {
+                course.addAssignment(a);
+                renderAssignments(assignmentsListPane);
             }
-
-            course.addAssignment(a);
-            renderAssignments(assignmentsListPane);
         });
     }
 
@@ -850,15 +900,22 @@ public class CourseroomController {
             try {
                 // Domain validates the 0..10 range and stores grade + feedback.
                 assignment.grade(submission.getStudentEmail(), grade, feedbackArea.getText());
-                // Only persist if this submission was actually saved to DB.
-                // id == 0 means the assignment itself was transient (getId() == 0L)
-                // so no row exists to update — grade lives in memory only for this session.
-                if (submission.getId() != 0L) {
-                    SubmissionRepository.updateGrade(submission);
-                }
-                renderAssignments(assignmentsListPane);
             } catch (IllegalArgumentException ex) {
                 new Alert(Alert.AlertType.ERROR, ex.getMessage()).showAndWait();
+                return;
+            }
+            // Only persist if this submission was actually saved to DB.
+            // id == 0 means the assignment itself was transient (getId() == 0L)
+            // so no row exists to update — grade lives in memory only for this session.
+            if (submission.getId() != 0L) {
+                AsyncDb.run(
+                        () -> SubmissionRepository.updateGrade(submission),
+                        () -> renderAssignments(assignmentsListPane),
+                        err -> new Alert(Alert.AlertType.ERROR,
+                                "Nu s-a putut salva nota: " + err.getMessage(),
+                                ButtonType.OK).showAndWait());
+            } else {
+                renderAssignments(assignmentsListPane);
             }
         });
     }
