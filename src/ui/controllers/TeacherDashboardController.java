@@ -12,6 +12,7 @@ import repository.Courserepository;
 import service.ActionBus;
 import service.Auditaction;
 import service.WhiteBoard;
+import ui.util.AsyncDb;
 import ui.util.UserSession;
 
 import java.util.ArrayList;
@@ -109,15 +110,7 @@ public class TeacherDashboardController extends BaseDashboardController {
      * An inline reveal keeps the user in context and looks cleaner.
      */
     private Node buildCoursesPanel() {
-        // Reload courses from DB every time the panel is opened
         myCourses.clear();
-        try {
-            myCourses.addAll(
-                    Courserepository.findByTeacher(teacher.getEmail(), Courserepository.SortOrder.DATE));
-        } catch (Exception ex) {
-            // DB not connected yet — silent fallback to empty list
-            System.err.println("[TeacherDashboard] Could not load courses: " + ex.getMessage());
-        }
 
         VBox box = new VBox(20);
         box.getStyleClass().add("content-area");
@@ -143,9 +136,29 @@ public class TeacherDashboardController extends BaseDashboardController {
         HBox headerRow = new HBox(16, heading, newCourseBtn);
         headerRow.setAlignment(Pos.CENTER_LEFT);
 
-        // ── Course list ───────────────────────────────────────────────────────
+        // ── Course list — loaded off the FX thread, spinner meanwhile ─────────
         VBox courseList = new VBox(10);
-        renderCourseList(courseList);
+        courseList.getChildren().add(new ProgressIndicator());
+
+        AsyncDb.call(
+                () -> Courserepository.findByTeacher(
+                        teacher.getEmail(), Courserepository.SortOrder.DATE),
+                courses -> {
+                    // Clear here (not before dispatch): two overlapping loads
+                    // would otherwise each append and produce duplicates.
+                    myCourses.clear();
+                    myCourses.addAll(courses);
+                    renderCourseList(courseList);
+                },
+                err -> {
+                    courseList.getChildren().clear();
+                    System.err.println("[TeacherDashboard] Could not load courses: "
+                            + err.getMessage());
+                    Label errLbl = new Label("Nu s-au putut incarca cursurile. "
+                            + "Verifica conexiunea la baza de date.");
+                    errLbl.getStyleClass().add("error-label");
+                    courseList.getChildren().add(errLbl);
+                });
 
         ScrollPane scroll = new ScrollPane(courseList);
         scroll.setFitToWidth(true);
@@ -209,29 +222,33 @@ public class TeacherDashboardController extends BaseDashboardController {
                 return;
             }
 
-            try {
-                Course newCourse = new Course(title, subject,
-                        teacher.getEmail(), teacher.getName());
-                Course saved = Courserepository.save(newCourse);
-                myCourses.add(0, saved);   // prepend — newest first
+            saveBtn.setDisable(true);
+            AsyncDb.call(
+                    () -> Courserepository.save(
+                            new Course(title, subject,
+                                    teacher.getEmail(), teacher.getName())),
+                    saved -> {
+                        myCourses.add(0, saved);   // prepend — newest first
 
-                ActionBus.get().publish(Auditaction.COURSE_CREATED,
-                        teacher.getEmail(), title);
+                        ActionBus.get().publish(Auditaction.COURSE_CREATED,
+                                teacher.getEmail(), title);
 
-                // Refresh the course list inside parentBox
-                // The courseList VBox is the last child of parentBox
-                // (after headerRow and createForm)
-                VBox courseList = findCourseListIn(parentBox);
-                if (courseList != null) renderCourseList(courseList);
+                        // Refresh the course list inside parentBox
+                        // The courseList VBox is the last child of parentBox
+                        // (after headerRow and createForm)
+                        VBox courseList = findCourseListIn(parentBox);
+                        if (courseList != null) renderCourseList(courseList);
 
-                titleField.clear();
-                subjectCombo.setValue(null);
-                errorLbl.setVisible(false);
-                errorLbl.setManaged(false);
-
-            } catch (Exception ex) {
-                showFormError(errorLbl, ex.getMessage());
-            }
+                        titleField.clear();
+                        subjectCombo.setValue(null);
+                        errorLbl.setVisible(false);
+                        errorLbl.setManaged(false);
+                        saveBtn.setDisable(false);
+                    },
+                    err -> {
+                        saveBtn.setDisable(false);
+                        showFormError(errorLbl, err.getMessage());
+                    });
         });
 
         form.getChildren().addAll(formTitle, titleField, subjectCombo, errorLbl, saveBtn);

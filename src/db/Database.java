@@ -24,13 +24,26 @@ public class Database {
     private static final String USER = "platforma_user";
     private static final String PASS = "parola123!@";
 
-    private static Connection connection;
+    /**
+     * One Connection per calling thread instead of one shared global.
+     *
+     * WHY: java.sql.Connection is NOT thread-safe. The old single shared
+     * field meant every JDBC call had to run on the JavaFX Application
+     * Thread — freezing the UI on any slow query — or risk corrupting
+     * connection state from background threads. ThreadLocal gives each
+     * thread its own connection, so AsyncDb workers can run repository
+     * calls in parallel with no interleaving and no locking.
+     */
+    private static final ThreadLocal<Connection> CONNECTION = new ThreadLocal<>();
 
     public static Connection get(){
         try{
+            Connection connection = CONNECTION.get();
             if(connection == null || !connection.isValid(2)){
                 connection = DriverManager.getConnection(URL,USER,PASS);
-                System.out.println("[DB] Connection opened.");
+                CONNECTION.set(connection);
+                System.out.println("[DB] Connection opened on '" +
+                        Thread.currentThread().getName() + "'.");
             }
             return connection;
         } catch(SQLException e) {
@@ -61,9 +74,15 @@ public class Database {
                     subject        VARCHAR(40)  NOT NULL,
                     creator_email  VARCHAR(120) NOT NULL,
                     creator_name   VARCHAR(60)  NOT NULL,
-                    created_at     TIMESTAMP    NOT NULL DEFAULT NOW()
+                    created_at     TIMESTAMP    NOT NULL DEFAULT NOW(),
+                    is_public      BOOLEAN      NOT NULL DEFAULT TRUE
                 )
                 """);
+            // Databases created before is_public existed get the column here;
+            // CREATE TABLE IF NOT EXISTS alone can't add columns to old tables.
+            stmt.execute(
+                    "ALTER TABLE courses ADD COLUMN IF NOT EXISTS " +
+                    "is_public BOOLEAN NOT NULL DEFAULT TRUE");
 
             // WHY lessons here and not in LessonRepository?
             // All DDL is centralised in Database so the schema is visible in one place.
@@ -138,12 +157,15 @@ public class Database {
             throw new RuntimeException("Eroare la crearea tabelelor: " + e.getMessage(), e);
         }
     }
+    /** Closes the calling thread's connection (each thread owns its own). */
     public static void close() {
         try {
+            Connection connection = CONNECTION.get();
             if (connection != null && !connection.isClosed()) {
                 connection.close();
                 System.out.println("[DB] Connection closed.");
             }
+            CONNECTION.remove();
         } catch (SQLException ignored) {}
     }
 

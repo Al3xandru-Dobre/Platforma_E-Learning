@@ -13,6 +13,7 @@ import repository.Courserepository;
 import repository.EnrollmentRepository;
 import service.ActionBus;
 import service.Auditaction;
+import ui.util.AsyncDb;
 import ui.util.UserSession;
 
 import java.util.ArrayList;
@@ -136,15 +137,16 @@ public class StudentDashboardController extends BaseDashboardController {
         Label sub = new Label("Iata un rezumat al activitatii tale.");
         sub.getStyleClass().add("content-sub");
 
-        // Load real stats from DB
-        int enrolledCount = 0;
-        try {
-            enrolledCount = EnrollmentRepository.findCourseIdsByStudent(student.getEmail()).size();
-        } catch (Exception ignored) {}
+        // Load real stats from DB — off the FX thread; card shows "…" until loaded
+        VBox enrolledCard = statCard("…", "Cursuri inscrise");
+        AsyncDb.call(
+                () -> EnrollmentRepository.findCourseIdsByStudent(student.getEmail()).size(),
+                count -> ((Label) enrolledCard.getChildren().get(0)).setText(String.valueOf(count)),
+                err   -> ((Label) enrolledCard.getChildren().get(0)).setText("0"));
 
         HBox stats = new HBox(16);
         stats.getChildren().addAll(
-                statCard(String.valueOf(enrolledCount), "Cursuri inscrise"),
+                enrolledCard,
                 statCard("0",  "Teste sustinute"),
                 statCard("—",  "Nota medie")
         );
@@ -181,17 +183,9 @@ public class StudentDashboardController extends BaseDashboardController {
      * was active. Reloading ensures the lists are always current.
      */
     private Node buildCoursesPanel() {
-        // Reload from DB every time this panel opens
+        // Reload from DB every time this panel opens — on a background thread
         enrolledCourses.clear();
         availableCourses.clear();
-        try {
-            enrolledCourses.addAll(Courserepository.findEnrolledByStudent(
-                    student.getEmail(), Courserepository.SortOrder.DATE));
-            availableCourses.addAll(Courserepository.findAvailableForStudent(
-                    student.getEmail(), Courserepository.SortOrder.DATE));
-        } catch (Exception ex) {
-            System.err.println("[StudentDashboard] DB error loading courses: " + ex.getMessage());
-        }
 
         VBox box = new VBox(0);
         box.getStyleClass().add("content-area");
@@ -214,21 +208,47 @@ public class StudentDashboardController extends BaseDashboardController {
         StackPane contentSwap = new StackPane();
         VBox.setVgrow(contentSwap, Priority.ALWAYS);
 
-        Node myPane     = buildMyCoursesPane();
-        Node browsePane = buildBrowseCoursesPane();
+        // Loading placeholder while the two course queries run in the background
+        ProgressIndicator loading = new ProgressIndicator();
+        contentSwap.getChildren().add(loading);
 
-        contentSwap.getChildren().add(myPane);
+        AsyncDb.call(
+                () -> List.of(
+                        Courserepository.findEnrolledByStudent(
+                                student.getEmail(), Courserepository.SortOrder.DATE),
+                        Courserepository.findAvailableForStudent(
+                                student.getEmail(), Courserepository.SortOrder.DATE)),
+                lists -> {
+                    // Clear here (not before dispatch): two overlapping loads
+                    // would otherwise each append and produce duplicates.
+                    enrolledCourses.clear();
+                    availableCourses.clear();
+                    enrolledCourses.addAll(lists.get(0));
+                    availableCourses.addAll(lists.get(1));
 
-        myCoursesTab.setOnAction(e -> {
-            contentSwap.getChildren().setAll(myPane);
-            myCoursesTab.getStyleClass().add("room-tab-active");
-            browseTab.getStyleClass().remove("room-tab-active");
-        });
-        browseTab.setOnAction(e -> {
-            contentSwap.getChildren().setAll(browsePane);
-            browseTab.getStyleClass().add("room-tab-active");
-            myCoursesTab.getStyleClass().remove("room-tab-active");
-        });
+                    Node myPane     = buildMyCoursesPane();
+                    Node browsePane = buildBrowseCoursesPane();
+                    contentSwap.getChildren().setAll(myPane);
+
+                    myCoursesTab.setOnAction(e -> {
+                        contentSwap.getChildren().setAll(myPane);
+                        myCoursesTab.getStyleClass().add("room-tab-active");
+                        browseTab.getStyleClass().remove("room-tab-active");
+                    });
+                    browseTab.setOnAction(e -> {
+                        contentSwap.getChildren().setAll(browsePane);
+                        browseTab.getStyleClass().add("room-tab-active");
+                        myCoursesTab.getStyleClass().remove("room-tab-active");
+                    });
+                },
+                err -> {
+                    System.err.println("[StudentDashboard] DB error loading courses: "
+                            + err.getMessage());
+                    Label errLbl = new Label("Nu s-au putut incarca cursurile. "
+                            + "Verifica conexiunea la baza de date.");
+                    errLbl.getStyleClass().add("error-label");
+                    contentSwap.getChildren().setAll(errLbl);
+                });
 
         box.getChildren().addAll(heading, tabs, contentSwap);
         return box;
@@ -348,61 +368,87 @@ public class StudentDashboardController extends BaseDashboardController {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        Button actionBtn = buildEnrollButton(c);
+        StackPane actionBtn = buildEnrollButton(c);
 
         row.getChildren().addAll(privacyBadge, subjectChip, info, spacer, actionBtn);
         return row;
     }
 
-    private Button buildEnrollButton(Course course) {
+    /**
+     * Returns a StackPane wrapper so the enroll button can be swapped in
+     * asynchronously once hasPendingRequest() answers.
+     */
+    private StackPane buildEnrollButton(Course course) {
+        StackPane holder = new StackPane();
         if (course.isPublic()) {
             // Public: join immediately
             Button btn = new Button("✅ Inscrie-te");
             btn.getStyleClass().add("primary-btn");
             btn.setOnAction(e -> {
-                try {
-                    EnrollmentRepository.enroll(course.getId(),
-                            student.getEmail(), student.getName());
-                    ActionBus.get().publish(Auditaction.STUDENT_ENROLLED,
-                            student.getEmail(), course.getTitle());
-                    // Refresh the panel so this course moves to "My Courses"
-                    setContent(buildCoursesPanel());
-                } catch (Exception ex) {
-                    showAlert("Eroare", "Nu s-a putut finaliza inscrierea: " + ex.getMessage());
-                }
-            });
-            return btn;
-        } else {
-            // Private: check if request already sent
-            boolean alreadyRequested = false;
-            try {
-                alreadyRequested = EnrollmentRepository.hasPendingRequest(
-                        course.getId(), student.getEmail());
-            } catch (Exception ignored) {}
-
-            if (alreadyRequested) {
-                Button btn = new Button("⏳ In asteptare");
-                btn.getStyleClass().add("ghost-btn");
                 btn.setDisable(true);
-                return btn;
-            } else {
-                Button btn = new Button("🔒 Solicita acces");
-                btn.getStyleClass().add("secondary-btn");
-                btn.setOnAction(e -> {
-                    try {
-                        EnrollmentRepository.requestJoin(course.getId(),
-                                student.getEmail(), student.getName());
+                AsyncDb.run(
+                        () -> EnrollmentRepository.enroll(course.getId(),
+                                student.getEmail(), student.getName()),
+                        () -> {
+                            ActionBus.get().publish(Auditaction.STUDENT_ENROLLED,
+                                    student.getEmail(), course.getTitle());
+                            // Refresh the panel so this course moves to "My Courses"
+                            setContent(buildCoursesPanel());
+                        },
+                        ex -> {
+                            btn.setDisable(false);
+                            showAlert("Eroare",
+                                    "Nu s-a putut finaliza inscrierea: " + ex.getMessage());
+                        });
+            });
+            holder.getChildren().add(btn);
+        } else {
+            // Private: check if request already sent — disabled placeholder first
+            Button checking = new Button("…");
+            checking.getStyleClass().add("ghost-btn");
+            checking.setDisable(true);
+            holder.getChildren().add(checking);
+
+            AsyncDb.call(
+                    () -> EnrollmentRepository.hasPendingRequest(
+                            course.getId(), student.getEmail()),
+                    alreadyRequested -> holder.getChildren().setAll(
+                            alreadyRequested
+                                    ? pendingButton()
+                                    : requestButton(course)),
+                    err -> holder.getChildren().setAll(requestButton(course)));
+        }
+        return holder;
+    }
+
+    private Button pendingButton() {
+        Button btn = new Button("⏳ In asteptare");
+        btn.getStyleClass().add("ghost-btn");
+        btn.setDisable(true);
+        return btn;
+    }
+
+    private Button requestButton(Course course) {
+        Button btn = new Button("🔒 Solicita acces");
+        btn.getStyleClass().add("secondary-btn");
+        btn.setOnAction(e -> {
+            btn.setDisable(true);
+            AsyncDb.run(
+                    () -> EnrollmentRepository.requestJoin(course.getId(),
+                            student.getEmail(), student.getName()),
+                    () -> {
                         ActionBus.get().publish(Auditaction.STUDENT_ENROLL_REQUESTED,
                                 student.getEmail(), course.getTitle());
                         // Refresh so the button changes to "In asteptare"
                         setContent(buildCoursesPanel());
-                    } catch (Exception ex) {
-                        showAlert("Eroare", "Nu s-a putut trimite cererea: " + ex.getMessage());
-                    }
-                });
-                return btn;
-            }
-        }
+                    },
+                    ex -> {
+                        btn.setDisable(false);
+                        showAlert("Eroare",
+                                "Nu s-a putut trimite cererea: " + ex.getMessage());
+                    });
+        });
+        return btn;
     }
 
     // ── Helper for going back to the courses panel ────────────────────────────
